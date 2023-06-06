@@ -1,0 +1,31 @@
+{
+  "name": "mediastreamer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/app.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "SET NODE_TLS_REJECT_UNAUTHORIZED=0&& node --watch --experimental-specifier-resolution=node --loader ts-node/esm src/app.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start:esbuildwatch": "esbuild src/app.ts --watch --bundle --platform=node --target=esnext --outfile=dist/app.js --format=esm --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
+    "start:esbuild": "esbuild src/app.ts --bundle --platform=node --target=esnext --outfile=dist/app.js --format=esm --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
+    "start:esm": "SET NODE_TLS_REJECT_UNAUTHORIZED=0&& node --watch .",
+    "dev": "nodemon",
+    "build": "etsc"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dayjs": "^1.11.7",
+    "esbuild": "^0.17.19",
+    "fastify": "^4.17.0",
+    "got": "^12.6.0",
+    "pretty-bytes": "^6.1.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.1"
+  }
+}

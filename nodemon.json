@@ -1,0 +1,8 @@
+{
+    "watch": ["src"],
+    "ignore": ["src/**/*.test.ts", "node_modules"],
+    "ext": "ts,mjs,js,json,graphql",
+    "exec": "npm run start:esbuild && node ./dist/app.js",
+    "exec123": "etsc && node ./dist/app.js",
+    "legacyWatch": true
+  }
