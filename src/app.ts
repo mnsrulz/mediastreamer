@@ -1,6 +1,7 @@
-import got from 'got';
-import { streamer, sampleStreamUrl, parseRangeRequest } from './streamer.js';
+import { streamer, currentStats } from './streamer.js';
 import Fastify from 'fastify'
+import { getLinks } from './apiClient.js';
+import { parseRangeRequest } from './utils.js';
 
 const fastify = Fastify({ logger: false });
 
@@ -8,36 +9,58 @@ fastify.addContentTypeParser('*', { parseAs: 'buffer' }, function (request, payl
 
 fastify.get('/', async (request, reply) => {
     reply.type('application/json').code(200)
-    return { hello: 'world' }
+    return { hello: 'world123' }
 })
 
-fastify.get('/stream.mkv', async (request, reply) => {
-    let parsedRangeRequest = parseRangeRequest(request.headers['range']);
-    console.log(`parsedRangeRequest: ${JSON.stringify(parsedRangeRequest)}`);
+fastify.get('/stats', async (request, reply) => {
+    reply.type('application/json').code(200);
+    return currentStats();
+})
 
-    const head = await got.head(sampleStreamUrl, { https: { rejectUnauthorized: false } });
-    if (head.statusCode >= 400) throw new Error(`${head.statusCode} code received.`);
-    const clHeader = Number.parseInt(head.headers['content-length'] || '0');
-    console.log(`clHeader: ${clHeader}`);
-
-    if (!parsedRangeRequest) {
-        parsedRangeRequest = { rangeStart: 0, rangeEnd: clHeader - 1 };
+interface GetStreamRequest {
+    Params: {
+        imdbid: string, size: string
     }
+}
 
-    if (parsedRangeRequest) {
-        if (Number.isNaN(parsedRangeRequest.rangeEnd))
-            parsedRangeRequest.rangeEnd = clHeader - 1;
+fastify.get<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
+    const { imdbid, size } = request.params;
+    const documentSize = parseInt(size.substring(1), 32);
 
-        const resp = await streamer({
-            streamUrl: sampleStreamUrl,
-            start: parsedRangeRequest.rangeStart,
-            end: parsedRangeRequest.rangeEnd,
-            message: request.raw
+    const links = await getLinks(imdbid, documentSize);
+
+    if (links.length === 0)
+        return reply.status(500).send({ 'error': 'no valid stream found' });
+
+    // reply.type('application/json').code(200)
+    // return links;
+
+    /*
+    1. GET ALL THE ACTIVE LINKS ASSOCIATED WITH THIS IMDB AND SIZE COMBINATION 
+    2. GRAB THE TOP MOST LINK AND START THE STREAMER PROCESS
+    
+    THERE SHOULD BE A WAY TO CALL THE API TO GET THE LINKS AND
+        TO MARK A SPECIFIC DOCUMENTID TO REFRESH
+    */
+
+
+    const range = parseRangeRequest(documentSize, request.headers['range'])
+        || { start: 0, end: documentSize - 1 };
+
+    const firstLink = links[0];
+    if (range) {
+        const resp = streamer({
+            streamUrl: firstLink.playableLink,
+            headers: firstLink.headers,
+            size: documentSize,
+            start: range.start,
+            end: range.end,
+            rawHttpMessage: request.raw
         });
         reply.header('Content-Type', 'application/octet-stream');
         reply.header('Accept-Ranges', 'bytes');
-        reply.header('Content-Length', parsedRangeRequest.rangeEnd - parsedRangeRequest.rangeStart + 1);
-        reply.header('Content-Range', `bytes ${parsedRangeRequest.rangeStart}-${parsedRangeRequest.rangeEnd}/${clHeader}`);
+        reply.header('Content-Length', range.end - range.start + 1);
+        reply.header('Content-Range', `bytes ${range.start}-${range.end}/${documentSize}`);
         return reply.send(resp);
     }
     throw new Error('Only range request supported!');

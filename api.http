@@ -1,0 +1,16 @@
+GET http://localhost:3000/
+
+###
+GET http://localhost:3000/stream/tt9006564/S344l0p0
+Range: bytes=2000000000-2000000010
+
+###
+GET http://localhost:3000/stream/tt9006564/S344l0p0
+Range: bytes=19000000-19000090
+
+###
+GET http://localhost:3000/stream/tt9006564/S1mnc74d
+Range: bytes=9120000-9120010
+
+###
+GET http://localhost:3000/stats

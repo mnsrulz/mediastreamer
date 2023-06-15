@@ -1,136 +1,140 @@
 import { Readable } from 'node:stream';
 import * as http from 'http'
 import { EventEmitter } from 'node:events';
-import { setTimeout as delay } from 'node:timers/promises';
 import got, { Request, Response } from 'got';
 import prettyBytes from 'pretty-bytes';
 import dayjs from 'dayjs'
+import { pEvent } from 'p-event';
+import { ManualResetEvent } from './ManualResetEvent.js';
+import { MyBufferCollection } from './MyBufferCollection.js';
+import { MyBuffer } from './MyBuffer.js';
+
+const parseContentLengthFromRangeHeader = (headerValue: string | null): number | undefined => {
+    if (headerValue) {
+        return parseInt(headerValue.split('/').pop() || '0');
+    }
+}
 
 export const sampleStreamUrl = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_30MB.mp4';
 const streams: InternalStream[] = [];
 
-export const parseRangeRequest = (rangeHeader: string | string[] | undefined) => {
-    let range: string = '';
-    if (rangeHeader) {
-        if (Array.isArray(rangeHeader))
-            range = rangeHeader[0];
-        else
-            range = rangeHeader;
-    }
-    if (range?.startsWith('bytes=')) {
-        const kis = range.substring(6).split('-');
+export const currentStats = () => {
+    const _stmaps = streams.map(x => {
         return {
-            rangeStart: Number.parseInt(kis[0]),
-            rangeEnd: Number.parseInt(kis[1])
-        }
-    }
+            streamUrl: x.url,
+            //kk: x.headers,
+            numberOfStreams: x.MyGotStreamCount,
+            bufferArrayLength: x._bufferArray.bufferArrayCount,
+            bufferArraySize: prettyBytes(x._bufferArray.bufferSize)
+        };
+    });
+    return _stmaps;
 }
 
-// async function* startStreamer(resp: Request) {
-//     for await (const chunk of resp) {
-//         console.log(chunk)
-//         yield chunk;
-//     }
-// }
-
-class MyBuffer {
-    _buffer: Buffer;
-    _start: number;
-    _end: number;
-    _serialized: boolean;
-    _lastUsed: Date;
-    /**
-     *
-     */
-    constructor(buffer: Buffer, start: number, end: number) {
-        this._buffer = buffer;
-        this._start = start;
-        this._end = end;
-        this._serialized = false;
-        this._lastUsed = new Date();
-    }
-    serialize(): boolean {
-        return true;    //for merging the buffers
-    }
-
-    markAsUsedJustNow = () => {
-        this._lastUsed = new Date();
-    }
-}
 
 class MyGotStream {
     public startPosition = 0;
-    public position = 0;
+    public currentPosition = 0;
     public lastUsed = new Date();
-    private gotStream: Request;
-    internalstream: InternalStream;
+    private _gotStream: Request;
+    _internalstream: InternalStream;
+    _mre = ManualResetEvent.createNew();
     intervalPointer: NodeJS.Timer;
+    bus = new EventEmitter();
+    private _lastReaderPosition = 0;
+    isSuccessful = false;
+    private _drainRequested = false;
+
     constructor(internalstream: InternalStream, initialPosition: number) {
-        console.log(`Building a new MyGotStream with initialPosition: ${initialPosition}`);
+        this._internalstream = internalstream;
 
-        this.startPosition = initialPosition;
-        this.position = initialPosition;
-        this.gotStream = got.stream(internalstream.url, {
+        console.log(`Buildings a new MyGotStream ${new URL(internalstream.url).host} with initialPosition: ${initialPosition}`);
+        const _i = this;
+        _i.startPosition = initialPosition;
+        _i.currentPosition = initialPosition;
+        _i._lastReaderPosition = initialPosition;
+
+        const _internalHeaders = internalstream.headers || {};
+        _internalHeaders['Range'] = `bytes=${_i.currentPosition}-`;
+
+        this._gotStream = got.stream(internalstream.url, {
             https: { rejectUnauthorized: false },
-            headers: {
-                'Range': `bytes=${initialPosition}-`
-            }
-        }).on('response', _res => {
+            headers: _internalHeaders,
+            throwHttpErrors: true
+        }).on('response', (response: Response) => {
+            // console.log(`inside response event with status: ${response.statusCode}`);
+            let _result = false;
+            if (response.statusCode >= 200 && response.statusCode < 300) {
+                const contentLengthHeader = parseInt(response.headers['content-length'] || '0');
+                const potentialContentLength = parseContentLengthFromRangeHeader(response.headers['content-range'] || '')
+                    || contentLengthHeader;
 
+                if (internalstream._size !== potentialContentLength) {
+                    throw new Error(`content length mismatch: E/A ${internalstream._size}/${potentialContentLength}`);
+                } else {
+                    console.info(`successful stream acquired with matching content length ${potentialContentLength}`);
+                    _i.isSuccessful = true;
+                    _result = true;
+                }
+            }
+            _i._mre.set();
+        }).on('error', () => {
+            _i._mre.set();
         });
 
-        this.gotStream.on('error', () => { console.error(`Error occurred in the gotStream...`); });
-        this.internalstream = internalstream;
-        const _stream = this.gotStream;
-        const _intance = this;
         //this is to show if the stream break the code behaves appropriately.
         this.intervalPointer = setInterval(() => {
-            if (dayjs(_intance.lastUsed).isBefore(dayjs(new Date()).subtract(1, 'minute'))) {
-                console.warn(`ok.. forcing the stream to auto destry after idling for more than 1 minute`);
-                _stream.destroy();
+            if (dayjs(_i.lastUsed).isBefore(dayjs(new Date()).subtract(1, 'minute'))) {
+                console.warn(`ok.. forcing the stream to auto destroy after idling for more than 1 minute`);
+                _i.drainIt();
+                _i._gotStream.destroy();
             }
         }, 20000);
+
     }
-    bus = new EventEmitter();
-    // private _sp = 0;
-    private _lastReaderPosition = 0;
-    public rollin = async () => {
+
+    public startStreaming = async () => {
+        const _self = this;
         try {
-            const _self = this;
-            for await (const chunk of _self.gotStream) {
+            await this._mre.wait();
+            console.log(`yay! we found a good stream... traversing it..`);
+
+            for await (const chunk of _self._gotStream) {
                 const _buf = (chunk as Buffer);
-                const selfbuffer = new MyBuffer(_buf, _self.position, _self.position + _buf.byteLength - 1);
-                //console.log(`Adding the buffer entry with ${selfbuffer._start} - ${selfbuffer._end}`);
-                _self.internalstream._bufferArray.push(selfbuffer);
-                _self.position += _buf.byteLength;
+                const selfbuffer = new MyBuffer(_buf, _self.currentPosition, _self.currentPosition + _buf.byteLength - 1);
+                _self._internalstream._bufferArray.push(selfbuffer);
+                _self.currentPosition += _buf.byteLength;
                 _self.lastUsed = new Date();
-                //console.log(`Advancing the position to ${this.position}. Now we have ${_self.internalstream._bufferArray.length} entries in cache.`);
-                if (_self.position > _self._lastReaderPosition + 8000000) {    //8MB advance
+                if (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + 8000000) {    //8MB advance
                     console.log('Pausing the stream as it reaches the threshold')
-                    var pm = new Promise(innerResolve => {
-                        _self.bus.once('unlocked', innerResolve);
-                    });
-                    await pm;
+                    await pEvent(_self.bus, 'unlocked');
                     console.log('resume Event triggered so resuming the stream')
                 }
             }
         } catch (error) {
-            console.log(`error occurred while iterating the stream...`);
+            _self._drainRequested ?
+                console.log(`stream ended as drain requested`) :
+                console.log(`error occurred while iterating the stream...`);    //in case of errors the system will just create a new stream automatically.
         } finally {
             clearInterval(this.intervalPointer);
         }
     }
 
-    public CanResolve = (position: number) => position >= this.startPosition && position <= this.position;
+    public CanResolve = (position: number) => position >= this.startPosition && position <= this.currentPosition;
 
     public resume = () => {
         this.lastUsed = new Date();
-        this._lastReaderPosition = this.position;
+        this._lastReaderPosition = this.currentPosition;
+        this.bus.emit('unlocked');
+    }
+
+    public drainIt = () => {
+        this._drainRequested = true;
         this.bus.emit('unlocked');
     }
 
     public printStats = () => {
-        const { position, lastUsed, startPosition } = this;
+        const { currentPosition: position, lastUsed, startPosition } = this;
         return JSON.stringify({ position, lastUsed, startPosition });
     }
 }
@@ -141,33 +145,44 @@ interface InternalStreamRequestStreamEventArgs { position: number }
 TODO:
 1: Allow multiple urls to processed simultaneously
 2: Cleanup the array buffer based on some priority. Like start/end range of files should remain there for long time and use lastUsed property
+3: Set a static list of hostnames and their pre configured values like
+    how many concurrent streams allowed and their ttl (e.g. google streams are good so we can keep the for longer)
+    define the order which the stream dispose
+    support stream which allows single connection only like clicknupload
+4: speed detection would be wonderful to add.
 */
 
 class InternalStream {
-    public _bufferArray: MyBuffer[] = [];
+    _bufferArray = new MyBufferCollection();
+
     private _em: EventEmitter = new EventEmitter();
     private _st: MyGotStream[] = [];
     url: string;
+    headers: Record<string, string>;
+    _size: number;
 
-    constructor(url: string) {
+    /*
+    Look for an existing stream which can satisfy the request. If not create one.
+    */
+    public static create = (req: StreamerRequest) => {
+        let existingStream = streams.find(s => s.url === req.streamUrl);
+        if (!existingStream) {
+            existingStream = new InternalStream(req.streamUrl, req.size, req.headers);
+            streams.push(existingStream);
+        }
+        return existingStream;
+    }
+
+
+    public get MyGotStreamCount() {
+        return this._st.length;
+    }
+
+    constructor(url: string, size: number, headers: Record<string, string>) {
         this.url = url;
+        this.headers = headers;
+        this._size = size;
         this._em.on('pumpresume', this.streamHandler);
-        const _in = this;
-        setInterval(() => {
-            const _stmaps = _in._st.map(x => {
-                return {
-                    streamUrl: url,
-                    startPosition: x.startPosition,
-                    position: x.position,
-                    lastUsed: x.lastUsed
-                };
-            });
-
-            console.log(`
-            Printing the following st maps currently in use.
-            ${JSON.stringify(_stmaps)}
-            And following numbers of buffer arrays: ${_in._bufferArray.length} with size: ${prettyBytes(_in._bufferArray.map(x => x._buffer.length).reduce((x, c) => x + c))}`);
-        }, 10000);
     }
 
     private removeGotStreamInstance = (streamInstance: MyGotStream) => {
@@ -179,151 +194,70 @@ class InternalStream {
         console.log(`stream handler event received with following data: ${JSON.stringify(args)} and we have ${this._st?.length} streams avaialble`);
         const exisitngStream = this._st.find(x => x.CanResolve(args.position));
         if (exisitngStream) {
-            exisitngStream?.resume();
+            exisitngStream.resume();
         }
         else {
             const __st = this;
             const newStream = new MyGotStream(this, args.position);
             this._st.push(newStream);
             //add some listeners here to remove it if an error occurred in teh mygotstream class.. guess it's already handled
-            newStream.rollin().then(() => __st.removeGotStreamInstance(newStream));
+            newStream.startStreaming()
+                .then(() => __st.removeGotStreamInstance(newStream));
+            await newStream._mre.wait();
+            __st._em.emit(`response-${args.position}`, {
+                isSuccessful: newStream.isSuccessful
+            });
         }
     }
 
-    public pumpV2 = async (start: number, end: number, message: http.IncomingMessage) => {
+    public pumpV2 = (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
         console.log(`pumpv2 called with ${start}-${end} range`);
-        // await this._signal;
-        // console.log('finished stream signal');
-        const bytesRequested = end - start + 1; //304-201+1 = 104
-        let bytesConsumed = 0,  //0
-            position = start;   //201
+        const bytesRequested = end - start + 1;
+        let bytesConsumed = 0,
+            position = start;
         const _instance = this;
         async function* _startStreamer() {
-            while (!message.destroyed) {
+            let streamBroken = false;
+            while (!rawHttpRequest.destroyed && !streamBroken) {
                 if (bytesConsumed >= bytesRequested) {
                     console.log(`Guess what! we have reached the conclusion of this stream request.`);
                     break;
                 }
 
-                const existingBuffer = _instance._bufferArray.find(x => position >= x._start && position <= x._end);
-                if (existingBuffer) {
-                    existingBuffer.markAsUsedJustNow();
-                    //console.log(`This particular range ${[position, bytesConsumed, bytesRequested]} is partly present in the cache with entry ${existingBuffer._start} - ${existingBuffer._end}.`);
-                    const toStartFrom = position - existingBuffer._start;   //201-200 =1
-                    const toEnd = toStartFrom + bytesRequested - bytesConsumed;
-                    const bufferToSend = existingBuffer._buffer.subarray(toStartFrom, toEnd);  //1,104
-                    //console.log(`Buffer sliced from ${toStartFrom} - ${toEnd} with ${bufferToSend.byteLength} bytes`);
-                    bytesConsumed += bufferToSend.byteLength;   //99
-                    position += bufferToSend.byteLength;    //99+201 = 300
-                    yield bufferToSend;
+                const __data = _instance._bufferArray.tryFetch(position, bytesRequested, bytesConsumed);
+                //we should advance the resume if we knew we are about to reach the buffer end
+                if (__data) {
+                    bytesConsumed = __data.bytesConsumed;
+                    position = __data.position;
+                    yield __data.data;
                 } else {
-                    //console.log('Buffer not present.. going to emit it.')
                     _instance._em.emit('pumpresume', { position } as InternalStreamRequestStreamEventArgs);
-                    await delay(100);  //may be utilize event handling here...
-                    //console.log(`100ms waiting timeout elapsed...`);
+                    try {
+                        const resultofpevent: { isSuccessful: boolean } = await pEvent(_instance._em, `response-${position}`, {
+                            timeout: 3000
+                        });
+                        if (!resultofpevent.isSuccessful) {
+                            console.log('stream seem to be found broken!!!');
+                            streamBroken = true;
+                        }
+                    } catch (error) {
+                        //ignore errors as they are mostly of timeout error
+                    }
                 }
             }
-            message.destroyed ?
+            rawHttpRequest.destroyed ?
                 console.log('request was destroyed') :
-                console.log(`Stream pumpV2 finished with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
+                console.log(`Stream pumpV2 ${streamBroken ? 'broken' : 'finished'} with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
+
+            if (streamBroken) throw new Error('stream broken');
         }
 
-        return new Promise((resolve, reject) => {
-            resolve(Readable.from(_startStreamer()));
-        });
+        return Readable.from(_startStreamer());
     }
-
-    // private sliceExistingBuffer(n: number) {
-    //     if (this._buffer && this._buffer.byteLength > 0) {
-    //         console.log(`slicing the existing buffer with length: ${n} bytes from existing buffer which contains ${this._buffer.byteLength} bytes.`);
-
-    //         const dataToReturn = this._buffer.subarray(0, Math.min(this._buffer.byteLength, n));
-    //         this._buffer = this._buffer.subarray(n);
-
-    //         console.log(`returning ${dataToReturn.byteLength} bytes of existing buffer & now new buffer length: ${this._buffer.byteLength}`);
-    //         return {
-    //             hasSomeData: true,
-    //             data: dataToReturn
-    //         }
-    //     } else {
-    //         return {
-    //             hasSomeData: false,
-    //             data: null
-    //         }
-    //     }
-    // }
-
-    // public async pump(start: number, end: number): Promise<Readable> {
-    //     this._isPumping = true;
-    //     console.log(`pushing from ${start}-${end}`);    //0-3   4 bytes of data we have to return
-    //     await this._signal;
-    //     const bytesRequested = end - start + 1; //4bytes of data to send
-    //     let bytesConsumed = 0;
-    //     const _instance = this;
-    //     async function* _startStreamer() {
-    //         const existingBufferresponse = _instance.sliceExistingBuffer(bytesRequested);
-    //         if (existingBufferresponse.hasSomeData) {
-    //             console.log(`found some existing buffer.. will try to flush out it..`);
-    //             const lenthOfCurrentChunk = existingBufferresponse.data?.byteLength || 0;
-    //             yield existingBufferresponse.data;
-    //             bytesConsumed += lenthOfCurrentChunk;
-    //         }
-    //         if (bytesRequested > bytesConsumed) {
-    //             console.log(`Will read from the stream with already consumedBytes: ${bytesConsumed} and originally requested ${bytesRequested} bytes.`);
-
-    //             if (_instance._stream.isPaused()) _instance._stream.resume();
-
-    //             for await (const chunk of _instance._stream) {
-    //                 const chunkAsBuffer = chunk as Buffer
-    //                 const lenthOfCurrentChunk = chunkAsBuffer.byteLength; //2011011
-
-    //                 if (bytesRequested > (bytesConsumed + lenthOfCurrentChunk)) {
-    //                     console.log(`yielding length of chunk: ${lenthOfCurrentChunk}`);
-    //                     bytesConsumed += lenthOfCurrentChunk;
-    //                     yield chunkAsBuffer;
-    //                 } else {
-    //                     const remainingBytes = bytesRequested - bytesConsumed;  //2bytes
-    //                     if (remainingBytes > 0) {
-
-    //                         console.log(`Looks like we have recvd more data (${lenthOfCurrentChunk}) in buffer.. so sending only ${remainingBytes} bytes...`);
-    //                         bytesConsumed += remainingBytes;
-
-    //                         const remainingBuffer = chunkAsBuffer.subarray(0, remainingBytes);
-    //                         // const remainingBuffer = Buffer.from(chunkAsBuffer, 0, remainingBytes);
-    //                         yield remainingBuffer;
-    //                         _instance._buffer = chunkAsBuffer.subarray(remainingBytes);
-    //                         console.log(`buffer length remains: ${_instance._buffer.byteLength} bytes`);
-    //                         _instance._stream.pause();
-    //                         console.log(`pausing stream... with status: ${_instance._stream.isPaused()}`);
-    //                     } else {
-    //                         if (_instance._buffer) {
-    //                             _instance._buffer = Buffer.concat([_instance._buffer, chunkAsBuffer]);
-    //                         } else {
-    //                             _instance._buffer = chunkAsBuffer;
-    //                         }
-    //                         //console.log(`concating the reamining buffer: ${chunkAsBuffer.byteLength} with new size: ${_instance._buffer.byteLength}`);                            
-    //                     }
-    //                 }
-    //                 // console.log(bytesConsumed);
-    //             }
-    //         } else {
-    //             console.log(`data was already consumed from the internal buffer..`);
-
-    //         }
-    //     }
-
-    //     return new Promise((resolve, reject) => {
-    //         resolve(Readable.from(_startStreamer()));
-    //     });
-    // }
 }
 
-interface StreamerRequest { streamUrl: string, start: number, end: number, message: http.IncomingMessage }
-export const streamer = async (req: StreamerRequest) => {
-    let existingStream = streams.find(s => s.url === req.streamUrl);
-    if (!existingStream) {
-        existingStream = new InternalStream(req.streamUrl);
-        streams.push(existingStream);
-    }
-    return await existingStream.pumpV2(req.start, req.end, req.message);
+interface StreamerRequest { streamUrl: string, size: number, headers: Record<string, string>, start: number, end: number, rawHttpMessage: http.IncomingMessage }
+export const streamer = (req: StreamerRequest) => {
+    const existingStream = InternalStream.create(req);
+    return existingStream.pumpV2(req.start, req.end, req.rawHttpMessage);
 }
