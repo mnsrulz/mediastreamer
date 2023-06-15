@@ -7,7 +7,7 @@ export class MyBufferCollection {
     constructor() {
     }
     public tryFetch = (position: number, bytesRequested: number, bytesConsumed: number) => {
-        console.log(`tryFetch called with position: ${position}, bytesConsumed: ${bytesConsumed}`);
+        // console.log(`tryFetch called with position: ${position}, bytesConsumed: ${bytesConsumed}`);
         const existingBuffer = this._bufferArray.find(x => position >= x._start && position <= x._end);
         //we should advance the resume if we knew we are about to reach the buffer end
         if (existingBuffer) {

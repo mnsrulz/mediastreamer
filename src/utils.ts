@@ -8,10 +8,17 @@ export const parseRangeRequest = (size: number, rangeHeader: string | string[] |
     }
     if (range?.startsWith('bytes=')) {
         const kis = range.substring(6).split('-');
-        return {
-            start: Number.parseInt(kis[0]),
-            end: Number.parseInt(kis[1]) || size
-        }
+        if (kis[0] == '') {
+            const lastBytes = Number.parseInt(kis[1]);
+            return {
+                start: size - lastBytes,
+                end: size - 1
+            }
+        } else
+            return {
+                start: Number.parseInt(kis[0]),
+                end: Number.parseInt(kis[1]) || (size - 1)
+            }
         //do for the no start/end ranges
     }
 }
