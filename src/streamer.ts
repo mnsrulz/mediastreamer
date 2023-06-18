@@ -10,6 +10,8 @@ import { MyBufferCollection } from './MyBufferCollection.js';
 import { MyBuffer } from './MyBuffer.js';
 import { getLinks, requestRefresh } from './apiClient.js';
 import { sort } from 'fast-sort';
+import { log } from './app.js';
+import { delay } from './utils.js';
 
 const parseContentLengthFromRangeHeader = (headerValue: string | null): number | undefined => {
     if (headerValue) {
@@ -56,10 +58,10 @@ export const clearBuffers = () => {
     });
 
     if (cleanupItems > 0) {
-        console.log(`found ${cleanupItems} items to cleanup ${prettyBytes(cleanupSize)}`);
+        log.info(`found ${cleanupItems} items to cleanup ${prettyBytes(cleanupSize)}`);
         buffersToClean.forEach(x => x.bufferCollection.clearBuffers(x.bufferIds));
     } else
-        console.log(`nothing to cleanup`);
+        log.info(`nothing to cleanup`);
 }
 
 export const currentStats = () => {
@@ -96,7 +98,7 @@ class MyGotStream {
 
         this._streamUrlModel = sort(internalstream._streamArray).desc(x => x.speedRank)[0];
 
-        console.log(`Buildings a new MyGotStream ${new URL(this._streamUrlModel.streamUrl).host} having rank ${this._streamUrlModel.speedRank
+        log.info(`Buildings a new MyGotStream ${new URL(this._streamUrlModel.streamUrl).host} having rank ${this._streamUrlModel.speedRank
             } with initialPosition: ${initialPosition}`);
 
         const _i = this;
@@ -118,21 +120,21 @@ class MyGotStream {
                     || contentLengthHeader;
 
                 if (internalstream._size !== potentialContentLength) {
-                    console.log(`content length mismatch: E/A ${internalstream._size}/${potentialContentLength}`);
+                    log.info(`content length mismatch: E/A ${internalstream._size}/${potentialContentLength}`);
                 } else {
-                    console.info(`successful stream acquired with matching content length ${potentialContentLength}`);
+                    log.info(`successful stream acquired with matching content length ${potentialContentLength}`);
                     _i.isSuccessful = true;
                 }
             } else {
-                console.log(`non successfull response code received: ${response.statusCode}`);
+                log.warn(`non successfull response code received: ${response.statusCode}`);
             }
             if (!_i.isSuccessful) {
                 internalstream._streamArray = internalstream._streamArray.filter(x => x != this._streamUrlModel);
                 requestRefresh(this._streamUrlModel.docId);
             }
             _i._mre.set();
-        }).on('error', () => {
-            console.log(`error occurred during the gotstream`);
+        }).on('error', (err) => {
+            log.error(`error occurred during the gotstream: ${err.message}`);
             _i._mre.set();
             // internalstream._streamArray = internalstream._streamArray.filter(x => x != this._streamUrlModel);
             // requestRefresh(this._streamUrlModel.docId);
@@ -141,7 +143,7 @@ class MyGotStream {
         //this is to show if the stream break the code behaves appropriately.
         this.intervalPointer = setInterval(() => {
             if (dayjs(_i.lastUsed).isBefore(dayjs(new Date()).subtract(1, 'minute'))) {
-                console.log(`ok.. forcing the stream to auto destroy after idling for more than 1 minute`);
+                log.warn(`ok.. forcing the stream to auto destroy after idling for more than 1 minute`);
                 _i.drainIt();
             }
         }, 20000);
@@ -155,11 +157,11 @@ class MyGotStream {
             let ispaused = false;
             await this._mre.wait();
             if (!_self.isSuccessful) throw new Error(`non successfull stream response recvd...`);
-            console.log(`yay! we found a good stream... traversing it..`);
+            log.info(`yay! we found a good stream... traversing it..`);
             // streamSpeedTest.add(_self._gotStream);
             // speedTestTimer = setInterval(() => {
             //     if (ispaused) return;
-            //     console.log(`get speed for current stream: ${streamSpeedTest.getSpeed()}`);
+            //     log.info(`get speed for current stream: ${streamSpeedTest.getSpeed()}`);
             // }, 1000);
 
             for await (const chunk of _self._gotStream) {
@@ -170,25 +172,25 @@ class MyGotStream {
                 _self.lastUsed = new Date();
                 if (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + 8000000) {    //8MB advance
                     ispaused = true;
-                    // console.log(`get speed for current stream: ${streamSpeedTest.getSpeed()}`);
-                    console.log('Pausing the stream as it reaches the threshold')
+                    // log.info(`get speed for current stream: ${streamSpeedTest.getSpeed()}`);
+                    //log.info('Pausing the stream as it reaches the threshold')
                     await pEvent(_self.bus, 'unlocked');
-                    console.log('resume Event triggered so resuming the stream')
+                    //log.info('resume Event triggered so resuming the stream')
                     ispaused = false;
                 }
             }
         } catch (error) {
             _self._drainRequested ?
-                console.log(`stream ended as drain requested`) :
-                console.log(`error occurred while iterating the stream...`);    //in case of errors the system will just create a new stream automatically.
+                log.info(`stream ended as drain requested`) :
+                log.error(`error occurred while iterating the stream...`);    //in case of errors the system will just create a new stream automatically.
         } finally {
             clearInterval(this.intervalPointer);
             //if (speedTestTimer) clearInterval(speedTestTimer);
             // try {
-            //     console.log(`removing the stream from the speed test...`);
+            //     log.info(`removing the stream from the speed test...`);
             //     this._gotStream && streamSpeedTest.remove(this._gotStream);
             // } catch (error) {
-            //     console.log(`error occurred while removing the stream from the speed test...`);
+            //     log.info(`error occurred while removing the stream from the speed test...`);
             // }
         }
     }
@@ -202,7 +204,7 @@ class MyGotStream {
     }
 
     public drainIt = () => {
-        console.log(`drain requested so destryoing the existing stream...`);
+        log.info(`drain requested so destryoing the existing stream...`);
         this._drainRequested = true;
         this._gotStream.destroy();
         this.bus.emit('unlocked');
@@ -235,29 +237,40 @@ class InternalStream {
     _imdbId: string;
     _streamArray: StreamUrlModel[];
     _size: number;
-
-    queueRefresh() {
+    private _isRefreshingStreams = false;
+    private _refreshTimer: NodeJS.Timer | null = null;
+    async requestRefresh() {
+        if (this._streamArray.length === 0) {
+            if (!this._isRefreshingStreams) {
+                this.performRefresh();
+                await delay(3000);  //let's wait for 3seconds when the stream array is empty as it might be refreshing...
+            }
+            return;
+        }
         if (this._refreshRequested) return;
         this._refreshRequested = true;
-        setTimeout(async () => {
-            try {
-                const tempstreams = await InternalStream.acquireStreams(this._imdbId, this._size);
-                this.mergeStream(tempstreams);
-            } catch (error) {
-                console.log(`error occurred while refreshing the streams for imdb: ${this._imdbId}, size: ${this._size}`);
-            }
-            this._refreshRequested = false;
-        }, 30000);   //after 30 seconds perform refresh of links
+        this._refreshTimer = setTimeout(this.performRefresh, 30000);   //after 30 seconds perform refresh of links
+    }
+    performRefresh = async () => {
+        try {
+            this._isRefreshingStreams = true;
+            const tempstreams = await InternalStream.acquireStreams(this._imdbId, this._size);
+            this.mergeStream(tempstreams);
+        } catch (error) {
+            log.info(`error occurred while refreshing the streams for imdb: ${this._imdbId}, size: ${this._size}`);
+        }
+        this._isRefreshingStreams = false;
+        this._refreshRequested = false;
     }
     mergeStream(streams: StreamUrlModel[]) {
         const docIds = streams.map(x => x.docId);
         this._streamArray = [...streams, ...this._streamArray.filter(x => !docIds.includes(x.docId))];
 
         const fastestStream = sort(this._streamArray).desc(x => x.speedRank)[0];
-        console.log(`merging streams... and finding any new better stream available`);
+        // log.info(`merging streams... and finding any new better stream available`);
         for (const currentgotstream of this._st) {
             if (currentgotstream._streamUrlModel.speedRank < fastestStream.speedRank) {
-                console.log(`found a new stream with rank ${fastestStream.speedRank} better than the existing ${currentgotstream._streamUrlModel.speedRank}..`);
+                log.info(`found a new stream with rank ${fastestStream.speedRank} better than the existing ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
                 currentgotstream.drainIt(); //drain this stream and let other one consume
             }
         }
@@ -276,7 +289,7 @@ class InternalStream {
     public static create = async (req: StreamerRequest) => {
         let existingStream = globalStreams.find(s => s._imdbId === req.imdbId && s._size === req.size);
         if (existingStream) {
-            existingStream.queueRefresh();  //silent refresh of the streams
+            await existingStream.requestRefresh();  //silent refresh of the streams
         } else {
             const tempstreams = await InternalStream.acquireStreams(req.imdbId, req.size);
             existingStream = new InternalStream(req.imdbId, req.size, tempstreams);
@@ -297,19 +310,19 @@ class InternalStream {
     }
 
     private removeGotStreamInstance = (streamInstance: MyGotStream) => {
-        console.log(`removing the gostream with stats: ${streamInstance.printStats()}`)
+        log.info(`removing the gostream with stats: ${streamInstance.printStats()}`)
         this._st = this._st.filter(item => item != streamInstance);
     }
 
     private streamHandler = async (args: InternalStreamRequestStreamEventArgs) => {
-        console.log(`stream handler event received with following data: ${JSON.stringify(args)} and we have ${this._st?.length} streams avaialble`);
+        log.trace(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
         const exisitngStream = this._st.find(x => x.CanResolve(args.position));
         if (exisitngStream) {
-            console.log(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
+            log.trace(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
             exisitngStream.resume();
         }
         else {
-            console.log(`constructing new MyGotStream with args: ${JSON.stringify(args)}`);
+            log.info(`constructing new MyGotStream with args: ${JSON.stringify(args)}`);
             const _instance = this;
             const newStream = new MyGotStream(this, args.position);
             this._st.push(newStream);
@@ -324,7 +337,7 @@ class InternalStream {
     }
 
     public pumpV2 = (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
-        console.log(`pumpv2 called with ${start}-${end} range`);
+        log.info(`pumpv2 called with ${start}-${end} range`);
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
             position = start;
@@ -333,7 +346,7 @@ class InternalStream {
             let streamBroken = false;
             while (!rawHttpRequest.destroyed && !streamBroken) {
                 if (bytesConsumed >= bytesRequested) {
-                    console.log(`Guess what! we have reached the conclusion of this stream request.`);
+                    log.info(`Guess what! we have reached the conclusion of this stream request.`);
                     break;
                 }
 
@@ -345,7 +358,7 @@ class InternalStream {
                     yield __data.data;
                 } else {
                     if (_instance._streamArray.length == 0) {
-                        console.log(`there are no streamable url available to stream`);
+                        log.info(`there are no streamable url available to stream`);
                         throw new Error(`there are no streamable url available to stream`);
                     }
                     _instance._em.emit('pumpresume', { position } as InternalStreamRequestStreamEventArgs);
@@ -354,7 +367,7 @@ class InternalStream {
                             timeout: 3000
                         });
                         if (!resultOfPEvent.isSuccessful) {
-                            console.log('stream seem to be found broken!!!');
+                            log.info('stream seem to be found broken!!!');
                             streamBroken = true;
                         }
                     } catch (error) {
@@ -363,8 +376,8 @@ class InternalStream {
                 }
             }
             rawHttpRequest.destroyed ?
-                console.log('request was destroyed') :
-                console.log(`Stream pumpV2 ${streamBroken ? 'broken' : 'finished'} with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
+                log.info('request was destroyed') :
+                log.info(`Stream pumpV2 ${streamBroken ? 'broken' : 'finished'} with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
 
             if (streamBroken) throw new Error('stream broken');
         }

@@ -1,6 +1,7 @@
 import { sort } from 'fast-sort';
 import { MyBuffer } from "./MyBuffer.js";
 import prettyBytes from 'pretty-bytes';
+import { log } from './app.js';
 
 export class MyBufferCollection {
     private _bufferArray: MyBuffer[] = [];
@@ -38,7 +39,8 @@ export class MyBufferCollection {
         let last: MyBuffer | null = null;
         let lastBufferPool: Buffer[] = [];
         let lastBufferPoolSize = 0;
-        console.log(`consolidation started, there are ${this.bufferArrayCount} instances...`);
+        const bufferArrayCount = this.bufferArrayCount;
+        //log.info(`consolidation started, there are ${this.bufferArrayCount} instances...`);
         for (const item of ordered) {
             if (last) {
                 //if the lastbuffer exceeds 8MB start a new one as it's easy to serialize it
@@ -64,7 +66,7 @@ export class MyBufferCollection {
         }
 
         this._bufferArray = newBuffArray;
-        console.log(`consolidation done with ${this.bufferArrayCount} instances!`);
+        log.info(`consolidated ${bufferArrayCount} buffer items to ${this.bufferArrayCount} items!`);
     };
 
     public get bufferArrayCount() {

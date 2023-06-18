@@ -1,3 +1,4 @@
+import { setTimeout } from 'node:timers/promises';
 export const parseRangeRequest = (size: number, rangeHeader: string | string[] | undefined) => {
     let range: string = '';
     if (rangeHeader) {
@@ -22,3 +23,5 @@ export const parseRangeRequest = (size: number, rangeHeader: string | string[] |
         //do for the no start/end ranges
     }
 }
+
+export const delay = setTimeout;
