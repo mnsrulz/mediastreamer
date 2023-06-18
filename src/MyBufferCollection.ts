@@ -1,5 +1,6 @@
 import { sort } from 'fast-sort';
 import { MyBuffer } from "./MyBuffer.js";
+import prettyBytes from 'pretty-bytes';
 
 export class MyBufferCollection {
     private _bufferArray: MyBuffer[] = [];
@@ -36,30 +37,34 @@ export class MyBufferCollection {
         let newBuffArray: MyBuffer[] = [];
         let last: MyBuffer | null = null;
         let lastBufferPool: Buffer[] = [];
+        let lastBufferPoolSize = 0;
         console.log(`consolidation started, there are ${this.bufferArrayCount} instances...`);
         for (const item of ordered) {
             if (last) {
-                if (last._end == item._start - 1) {
+                //if the lastbuffer exceeds 8MB start a new one as it's easy to serialize it
+                if ((lastBufferPoolSize + item._buffer.byteLength) < 8000000 && last._end == item._start - 1) {
                     last._end = item._end;
                 } else {
                     last._buffer = Buffer.concat(lastBufferPool);
                     newBuffArray.push(last);
                     lastBufferPool = [];
                     last = item;
+                    lastBufferPoolSize = 0;
                 }
             } else {
                 last = item;
             }
-            lastBufferPool.push(item._buffer);            
+            lastBufferPool.push(item._buffer);
+            lastBufferPoolSize += item._buffer.byteLength;
         }
-        
+
         if (last) {
             last._buffer = Buffer.concat(lastBufferPool);
             newBuffArray.push(last);
         }
 
         this._bufferArray = newBuffArray;
-        console.log(`consolidation done with ${this.bufferArrayCount} instances!`);        
+        console.log(`consolidation done with ${this.bufferArrayCount} instances!`);
     };
 
     public get bufferArrayCount() {
@@ -69,4 +74,37 @@ export class MyBufferCollection {
     public get bufferSize() {
         return this._bufferArray.map(x => x._buffer.length).reduce((x, c) => x + c, 0);
     }
+
+
+    public get bufferRange() {
+        let range = [];
+        for (const b of this._bufferArray) {
+            range.push({
+                start: b._start,
+                end: b._end,
+                bytesLength: b._end - b._start + 1,
+                bytesLengthHuman: prettyBytes(b._end - b._start + 1),
+                lastUsed: b._lastUsed
+            });
+        }
+        return range;
+    }
+
+    public clearBuffers(bufferIds: string[]) {
+        this._bufferArray = this._bufferArray.filter(x => !bufferIds.includes(x.bufferId));
+    }
+
+    
+    public get bufferRangeIds() {
+        let range = [];
+        for (const b of this._bufferArray) {
+            range.push({
+                bufferId: b.bufferId,
+                lastUsed: b._lastUsed,
+                bytesLength: b._end - b._start + 1
+            });
+        }
+        return range;
+    }
+    
 }

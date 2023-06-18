@@ -17,7 +17,7 @@ export const parseRangeRequest = (size: number, rangeHeader: string | string[] |
         } else
             return {
                 start: Number.parseInt(kis[0]),
-                end: Number.parseInt(kis[1]) || (size - 1)
+                end: Math.min(Number.parseInt(kis[1]), size - 1) || (size - 1)
             }
         //do for the no start/end ranges
     }

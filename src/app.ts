@@ -1,6 +1,5 @@
-import { streamer, currentStats } from './streamer.js';
+import { streamer, currentStats, clearBuffers } from './streamer.js';
 import Fastify from 'fastify'
-import { getLinks } from './apiClient.js';
 import { parseRangeRequest } from './utils.js';
 
 const fastify = Fastify({ logger: false });
@@ -11,6 +10,15 @@ fastify.get('/', async (request, reply) => {
     reply.type('application/json').code(200)
     return { hello: 'world123' }
 })
+
+setInterval(clearBuffers, 10 * 60 * 1000);   //register an auto cleanup
+
+fastify.get('/cleanup', async (request, reply) => {
+    clearBuffers();
+    reply.type('application/json').code(200)
+    return { success: 'ok' };
+})
+
 
 fastify.get('/stats', async (request, reply) => {
     reply.type('application/json').code(200);
@@ -25,12 +33,10 @@ interface GetStreamRequest {
 
 fastify.get<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
     const { imdbid, size } = request.params;
+    if (!size.startsWith('S')) throw new Error('Only request with size starts with S supported!');
+
     const documentSize = parseInt(size.substring(1), 32);
 
-    const links = await getLinks(imdbid, documentSize);
-
-    if (links.length === 0)
-        return reply.status(500).send({ 'error': 'no valid stream found' });
 
     // reply.type('application/json').code(200)
     // return links;
@@ -47,11 +53,10 @@ fastify.get<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) =>
     const range = parseRangeRequest(documentSize, request.headers['range'])
         || { start: 0, end: documentSize - 1 };
 
-    const firstLink = links[0];
+    console.log(`request recvd... ${JSON.stringify(range)}`);
     if (range) {
-        const resp = streamer({
-            streamUrl: firstLink.playableLink,
-            headers: firstLink.headers,
+        const resp = await streamer({
+            imdbId: imdbid.toLowerCase(),
             size: documentSize,
             start: range.start,
             end: range.end,
@@ -66,7 +71,7 @@ fastify.get<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) =>
     throw new Error('Only range request supported!');
 })
 
-fastify.listen({ port: 3000 }, (err, address) => {
+fastify.listen({ port: 3000, host: '0.0.0.0' }, (err, address) => {
     if (err) {
         console.log(err.message);
         throw err

@@ -13,7 +13,8 @@
     "test:watch": "ava --watch",
     "start:esbuildwatch": "esbuild src/app.ts --watch --bundle --platform=node --target=esnext --outfile=dist/app.js --format=esm --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
     "start:esbuild": "esbuild src/app.ts --bundle --platform=node --target=esnext --outfile=dist/app.js --format=esm --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
-    "start:esm": "SET NODE_TLS_REJECT_UNAUTHORIZED=0&& node --watch .",
+    "start:esmwatch": "SET NODE_TLS_REJECT_UNAUTHORIZED=0&& node --watch .",
+    "start:frontail": "node . | frontail --ui-highlight --ui-highlight-preset frontrailpresets\\npmlog.json --disable-usage-stats -p 9002 -n 1000 -",
     "dev": "nodemon",
     "build": "tsc --watch"
   },
@@ -21,33 +22,34 @@
   "license": "ISC",
   "dependencies": {
     "dayjs": "^1.11.7",
-    "esbuild": "^0.17.19",
     "fast-sort": "^3.4.0",
     "fastify": "^4.17.0",
     "got": "^12.6.0",
     "p-event": "^5.0.1",
     "pretty-bytes": "^6.1.0",
-    "range-parser": "^1.2.1"
+    "streamspeed": "^2.0.1"
   },
   "devDependencies": {
     "@ava/typescript": "^4.0.0",
-    "@types/range-parser": "^1.2.1",
     "ava": "^5.3.0",
+    "esbuild": "^0.18.3",
     "ts-node": "^10.9.1",
     "ts-node-dev": "^2.0.0",
     "tsx": "^3.12.7",
     "typescript": "^5.1.3"
   },
   "ava": {
-    "files": ["src/*.test.ts"],
-		"typescript": {
+    "files": [
+      "src/*.test.ts"
+    ],
+    "typescript": {
       "rewritePaths": {
-				"src/": "dist/"
-			},
-			"compile": false,
+        "src/": "dist/"
+      },
+      "compile": false,
       "extensions": [
         "ts"
       ]
-		}
-	}
+    }
+  }
 }

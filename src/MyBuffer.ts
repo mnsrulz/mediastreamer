@@ -22,4 +22,10 @@ export class MyBuffer {
         this._timesUsed++;
         this._lastUsed = new Date();
     };
+
+
+    public get bufferId() {
+        return `${this._start}-${this._end}`;
+    }
+
 }

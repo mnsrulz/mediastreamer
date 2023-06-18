@@ -37,3 +37,9 @@ test('parseRange header from bytes tests', t => {
     t.is(rangeRequest?.end, 999);
 });
 
+test('parseRange header from bytes tests with end range exceeding', t => {
+    const rangeRequest = parseRangeRequest(1000, 'bytes=900-1050');
+    t.is(rangeRequest?.start, 900);
+    t.is(rangeRequest?.end, 999);
+});
+
