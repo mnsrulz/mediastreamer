@@ -14,7 +14,7 @@
     "start:esbuild": "node build.mjs",
     "start:esbuildwatch": "node --watch build.mjs",
     "start:esmwatch": "SET NODE_TLS_REJECT_UNAUTHORIZED=0&& node --watch .",
-    "start:frontail": "node . | frontail --ui-highlight --ui-highlight-preset frontrailpresets\\npmlog.json --disable-usage-stats -p 9002 -n 1000 -",
+    "start:frontail": "SET NODE_TLS_REJECT_UNAUTHORIZED=0&& node . | frontail --ui-highlight --ui-highlight-preset frontrailpresets\\npmlog.json --disable-usage-stats -p 9002 -n 1000 -",
     "dev": "nodemon",
     "build": "tsc --watch"
   },

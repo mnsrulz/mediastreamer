@@ -1,4 +1,5 @@
 import got from 'got';
+import { log } from './app.js';
 const instance = got.extend({ prefixUrl: 'http://admin:admin@localhost:8000' });
 interface linksResponse {
     count: number
@@ -20,10 +21,11 @@ export const getLinks = async (imdbId: string, size: number) => {
 }
 
 export const requestRefresh = async (docId: string) => {
+    const urlPath = `api/links/refresh/${docId}`;
     try {
-        console.log(`requesting refresh for docId: ${docId}`);
-        await instance.post(`api/links/refresh/${docId}`);
+        log.info(`requesting refresh for docId: ${docId}`);
+        await instance.post(urlPath);
     } catch (error) {
-        console.log(`Error occurred while refreshing the link for docid: ${docId} `)
+        log.error(`Error occurred while calling the refresh api ${urlPath}. Possibly the api is down.`);
     }
 }

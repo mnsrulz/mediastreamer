@@ -19,7 +19,6 @@ const parseContentLengthFromRangeHeader = (headerValue: string | null): number |
     }
 }
 
-export const sampleStreamUrl = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_30MB.mp4';
 const globalStreams: InternalStream[] = [];
 
 export const clearBuffers = () => {
@@ -98,7 +97,7 @@ class MyGotStream {
 
         this._streamUrlModel = sort(internalstream._streamArray).desc(x => x.speedRank)[0];
 
-        log.info(`Buildings a new MyGotStream ${new URL(this._streamUrlModel.streamUrl).host} having rank ${this._streamUrlModel.speedRank
+        log.info(`Building a new MyGotStream ${new URL(this._streamUrlModel.streamUrl).host} having rank ${this._streamUrlModel.speedRank
             } with initialPosition: ${initialPosition}`);
 
         const _i = this;
@@ -142,8 +141,8 @@ class MyGotStream {
 
         //this is to show if the stream break the code behaves appropriately.
         this.intervalPointer = setInterval(() => {
-            if (dayjs(_i.lastUsed).isBefore(dayjs(new Date()).subtract(1, 'minute'))) {
-                log.warn(`ok.. forcing the stream to auto destroy after idling for more than 1 minute`);
+            if (dayjs(_i.lastUsed).isBefore(dayjs(new Date()).subtract(10, 'minute'))) {
+                log.warn(`ok.. forcing the stream to auto destroy after idling for more than 10 minute`);
                 _i.drainIt();
             }
         }, 20000);
