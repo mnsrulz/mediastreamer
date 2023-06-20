@@ -4,7 +4,7 @@
         "info": "color: green;",
         "https": "color: green; background-color: black;",
         "http": "color: green; background-color: black;",
-        "WARN": "color: black; background-color: yellow; font-style: normal;",
+        "warn": "color: black; background-color: yellow; ",
         "error": "color: red;",
         "ERR!": "color: red; background-color: black;"
     },

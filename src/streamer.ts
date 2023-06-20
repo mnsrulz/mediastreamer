@@ -7,7 +7,6 @@ import dayjs from 'dayjs'
 import { pEvent } from 'p-event';
 import { ManualResetEvent } from './ManualResetEvent.js';
 import { MyBufferCollection } from './MyBufferCollection.js';
-import { MyBuffer } from './MyBuffer.js';
 import { getLinks, requestRefresh } from './apiClient.js';
 import { sort } from 'fast-sort';
 import { log } from './app.js';
@@ -22,6 +21,7 @@ const parseContentLengthFromRangeHeader = (headerValue: string | null): number |
 const globalStreams: InternalStream[] = [];
 
 export const clearBuffers = () => {
+    const stime = performance.now();
     const maxSizeBuffer = 200 * 1000 * 1000;    //200MB buffer
     const bufferRanges = globalStreams.flatMap(x => {
         return x._bufferArray.bufferRangeIds.map(ii => {
@@ -57,8 +57,9 @@ export const clearBuffers = () => {
     });
 
     if (cleanupItems > 0) {
-        log.info(`found ${cleanupItems} items to cleanup ${prettyBytes(cleanupSize)}`);
         buffersToClean.forEach(x => x.bufferCollection.clearBuffers(x.bufferIds));
+        const ftime = performance.now();
+        log.info(`cleanup ${cleanupItems} items to ${prettyBytes(cleanupSize)} in ${ftime - stime} ms`);
     } else
         log.info(`nothing to cleanup`);
 }
@@ -165,8 +166,7 @@ class MyGotStream {
 
             for await (const chunk of _self._gotStream) {
                 const _buf = (chunk as Buffer);
-                const selfbuffer = new MyBuffer(_buf, _self.currentPosition, _self.currentPosition + _buf.byteLength - 1);
-                _self._internalstream._bufferArray.push(selfbuffer);
+                _self._internalstream._bufferArray.push(_buf, _self.currentPosition);
                 _self.currentPosition += _buf.byteLength;
                 _self.lastUsed = new Date();
                 if (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + 8000000) {    //8MB advance

@@ -1,20 +1,15 @@
 import test from 'ava';
 import { MyBufferCollection } from './MyBufferCollection.js';
-import { MyBuffer } from "./MyBuffer.js";
 import { parseRangeRequest } from './utils.js';
 
 
 test('buffer collection consolidate buffers test', t => {
     const bc = new MyBufferCollection();
-    bc.push(new MyBuffer(Buffer.from('abc'), 0, 2));
-    bc.push(new MyBuffer(Buffer.from('def'), 3, 5));
-    bc.push(new MyBuffer(Buffer.from('vw'), 21, 22));
-    bc.push(new MyBuffer(Buffer.from('xyz'), 23, 25));
-    bc.push(new MyBuffer(Buffer.from('xyz'), 24, 300));
-
-    console.log('erroring...')
-    bc.consolidateBuffers();
-
+    bc.push(Buffer.from('abc'), 0);
+    bc.push(Buffer.from('def'), 3);
+    bc.push(Buffer.from('vw'), 21);
+    bc.push(Buffer.from('wxy'), 23);
+    bc.push(Buffer.from('xyz'), 24);
     console.log(bc.bufferArrayCount);
     t.is(bc.bufferArrayCount, 3);
 });

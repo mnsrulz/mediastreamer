@@ -9,7 +9,7 @@ fastify.get('/', async (request, reply) => {
     return { hello: 'world123' }
 })
 
-setInterval(clearBuffers, 10 * 60 * 1000);   //register an auto cleanup
+setInterval(clearBuffers, 1 * 60 * 1000);   //register an auto cleanup
 
 fastify.get('/cleanup', async (request, reply) => {
     clearBuffers();

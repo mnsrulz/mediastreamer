@@ -1,0 +1,1 @@
+cmd /c "net stop "rclone-media-streamer-svc" & sc start "rclone-media-streamer-svc""
