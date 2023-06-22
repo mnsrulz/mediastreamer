@@ -25,3 +25,9 @@ export const parseRangeRequest = (size: number, rangeHeader: string | string[] |
 }
 
 export const delay = setTimeout;
+
+export const parseContentLengthFromRangeHeader = (headerValue: string | null): number | undefined => {
+    if (headerValue) {
+        return parseInt(headerValue.split('/').pop() || '0');
+    }
+}

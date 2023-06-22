@@ -10,19 +10,15 @@ import { MyBufferCollection } from './MyBufferCollection.js';
 import { getLinks, requestRefresh } from './apiClient.js';
 import { sort } from 'fast-sort';
 import { log } from './app.js';
-import { delay } from './utils.js';
+import { delay, parseContentLengthFromRangeHeader } from './utils.js';
+import config from './config.js';
 
-const parseContentLengthFromRangeHeader = (headerValue: string | null): number | undefined => {
-    if (headerValue) {
-        return parseInt(headerValue.split('/').pop() || '0');
-    }
-}
 
 const globalStreams: InternalStream[] = [];
 
 export const clearBuffers = () => {
     const stime = performance.now();
-    const maxSizeBuffer = 200 * 1000 * 1000;    //200MB buffer
+    const maxSizeBuffer = config.maxBufferSizeMB * 1000 * 1000;    //200MB buffer
     const bufferRanges = globalStreams.flatMap(x => {
         return x._bufferArray.bufferRangeIds.map(ii => {
             return {
@@ -77,7 +73,6 @@ export const currentStats = () => {
     });
     return _stmaps;
 }
-
 
 class MyGotStream {
     public startPosition = 0;
@@ -151,31 +146,17 @@ class MyGotStream {
 
     public startStreaming = async () => {
         const _self = this;
-        // const streamSpeedTest = new streamspeed();
-        // let speedTestTimer: NodeJS.Timer | null = null;
         try {
-            let ispaused = false;
             await this._mre.wait();
             if (!_self.isSuccessful) throw new Error(`non successfull stream response recvd...`);
             log.info(`yay! we found a good stream... traversing it..`);
-            // streamSpeedTest.add(_self._gotStream);
-            // speedTestTimer = setInterval(() => {
-            //     if (ispaused) return;
-            //     log.info(`get speed for current stream: ${streamSpeedTest.getSpeed()}`);
-            // }, 1000);
-
             for await (const chunk of _self._gotStream) {
                 const _buf = (chunk as Buffer);
                 _self._internalstream._bufferArray.push(_buf, _self.currentPosition);
                 _self.currentPosition += _buf.byteLength;
                 _self.lastUsed = new Date();
-                if (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + 8000000) {    //8MB advance
-                    ispaused = true;
-                    // log.info(`get speed for current stream: ${streamSpeedTest.getSpeed()}`);
-                    //log.info('Pausing the stream as it reaches the threshold')
+                if (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) {    //advance bytes
                     await pEvent(_self.bus, 'unlocked');
-                    //log.info('resume Event triggered so resuming the stream')
-                    ispaused = false;
                 }
             }
         } catch (error) {
@@ -184,13 +165,6 @@ class MyGotStream {
                 log.error(`error occurred while iterating the stream...`);    //in case of errors the system will just create a new stream automatically.
         } finally {
             clearInterval(this.intervalPointer);
-            //if (speedTestTimer) clearInterval(speedTestTimer);
-            // try {
-            //     log.info(`removing the stream from the speed test...`);
-            //     this._gotStream && streamSpeedTest.remove(this._gotStream);
-            // } catch (error) {
-            //     log.info(`error occurred while removing the stream from the speed test...`);
-            // }
         }
     }
 
@@ -248,7 +222,7 @@ class InternalStream {
         }
         if (this._refreshRequested) return;
         this._refreshRequested = true;
-        this._refreshTimer = setTimeout(this.performRefresh, 30000);   //after 30 seconds perform refresh of links
+        this._refreshTimer = setTimeout(this.performRefresh, config.refreshInterval);   //after 30 seconds perform refresh of links
     }
     performRefresh = async () => {
         try {

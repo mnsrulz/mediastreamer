@@ -1,6 +1,7 @@
 import got from 'got';
 import { log } from './app.js';
-const instance = got.extend({ prefixUrl: 'http://admin:admin@localhost:8000' });
+import config from './config.js';
+const instance = got.extend({ prefixUrl: config.linksApiUrl });
 interface linksResponse {
     count: number
     results: {

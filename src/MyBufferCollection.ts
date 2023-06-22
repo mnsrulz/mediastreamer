@@ -1,18 +1,14 @@
 import prettyBytes from 'pretty-bytes';
 import { log } from './app.js';
+import config from './config.js';
 
 export class MyBufferCollection {
     private _bufferArray: MyBuffer[] = [];
-    private _timerInstance?: NodeJS.Timeout;
     private _maxBufferSize;
-    constructor(maxBufferSize = 8000000) {
+    constructor(maxBufferSize = config.maxChunkSizeMB * 1024 * 1024) {
         this._maxBufferSize = maxBufferSize;
     }
     public tryFetch = (position: number, bytesRequested: number, bytesConsumed: number) => {
-        // console.log(`tryFetch called with position: ${position}, bytesConsumed: ${bytesConsumed}`);
-        //force consolidation if there are more than 1000 items
-        //        if (this._bufferArray.length > 1000) this.consolidateBuffers();
-
         const existingBuffer = this._bufferArray.find(x => position >= x._start && position <= x._end);
         //we should advance the resume if we knew we are about to reach the buffer end
         if (existingBuffer) {
@@ -28,7 +24,7 @@ export class MyBufferCollection {
             return { data: bufferToSend, position, bytesConsumed };
         }
     };
-    //setup some timer to consolidate the buffer into single ones.
+    
     public push = (buffer: Buffer, position: number) => {
         /*
         start position should be greater than zero...
@@ -43,49 +39,7 @@ export class MyBufferCollection {
         } else {
             this._bufferArray.push(new MyBuffer(buffer, position, position + buffer.byteLength - 1));
         }
-
-        // clearTimeout(this._timerInstance);
-        // this._timerInstance = setTimeout(this.consolidateBuffers, 10000);
     };
-
-    // public consolidateBuffers = () => {
-    //     const stime = performance.now();
-    //     const existingArray = this._bufferArray;
-    //     const ordered = sort(existingArray).asc(b => b._start);
-    //     let newBuffArray: MyBuffer[] = [];
-    //     let last: MyBuffer | null = null;
-    //     let lastBufferPool: Buffer[] = [];
-    //     let lastBufferPoolSize = 0;
-    //     const bufferArrayCount = this.bufferArrayCount;
-    //     //log.info(`consolidation started, there are ${this.bufferArrayCount} instances...`);
-    //     for (const item of ordered) {
-    //         if (last) {
-    //             //if the lastbuffer exceeds 8MB start a new one as it's easy to serialize it
-    //             if ((lastBufferPoolSize + item._length) < 8000000 && last._end == item._start - 1) {
-    //                 last._end = item._end;
-    //             } else {
-    //                 last._buffer = Buffer.concat(lastBufferPool);
-    //                 newBuffArray.push(last);
-    //                 lastBufferPool = [];
-    //                 last = item;
-    //                 lastBufferPoolSize = 0;
-    //             }
-    //         } else {
-    //             last = item;
-    //         }
-    //         lastBufferPool.push(item._buffer);
-    //         lastBufferPoolSize += item._buffer.byteLength;
-    //     }
-
-    //     if (last) {
-    //         last._buffer = Buffer.concat(lastBufferPool);
-    //         newBuffArray.push(last);
-    //     }
-
-    //     this._bufferArray = newBuffArray;
-    //     const ftime = performance.now();
-    //     log.info(`consolidated ${bufferArrayCount} buffer items to ${this.bufferArrayCount} items in ${ftime - stime} ms!`);
-    // };
 
     public get bufferArrayCount() {
         return this._bufferArray.length;
@@ -94,7 +48,6 @@ export class MyBufferCollection {
     public get bufferSize() {
         return this._bufferArray.map(x => x._length).reduce((x, c) => x + c, 0);
     }
-
 
     public get bufferRange() {
         let range = [];
@@ -114,7 +67,6 @@ export class MyBufferCollection {
         this._bufferArray = this._bufferArray.filter(x => !bufferIds.includes(x.bufferId));
     }
 
-
     public get bufferRangeIds() {
         let range = [];
         for (const b of this._bufferArray) {
@@ -126,9 +78,7 @@ export class MyBufferCollection {
         }
         return range;
     }
-
 }
-
 
 class MyBuffer {
     _additionalBuffer: Buffer[] = [];
@@ -162,10 +112,10 @@ class MyBuffer {
         this._lastUsed = new Date();
     };
 
-
     public get bufferId() {
         return `${this._start}-${this._end}`;
     }
+
     markAsClosed = () => {
         this._isClosed = true;
     }
@@ -182,5 +132,4 @@ class MyBuffer {
         }
         return this._buffer;
     }
-
 }

@@ -1,3 +1,6 @@
+import 'dotenv/config';
+import config from './config.js';
+
 import { fastify } from './app.js';
 import { streamer, currentStats, clearBuffers } from './streamer.js';
 import { parseRangeRequest } from './utils.js';
@@ -9,7 +12,7 @@ fastify.get('/', async (request, reply) => {
     return { hello: 'world123' }
 })
 
-setInterval(clearBuffers, 1 * 60 * 1000);   //register an auto cleanup
+setInterval(clearBuffers, config.AUTO_CLEAR_BUFFERS_INTERVAL);   //register an auto cleanup
 
 fastify.get('/cleanup', async (request, reply) => {
     clearBuffers();
@@ -55,7 +58,7 @@ fastify.get<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) =>
     throw new Error('Only range request supported!');
 })
 
-fastify.listen({ port: 3000, host: '0.0.0.0' }, (err, address) => {
+fastify.listen({ port: config.DEFAULT_SERVER_PORT, host: '0.0.0.0' }, (err) => {
     if (err) {
         fastify.log.fatal(err.message);
         throw err
