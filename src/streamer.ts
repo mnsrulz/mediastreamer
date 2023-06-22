@@ -56,8 +56,7 @@ export const clearBuffers = () => {
         buffersToClean.forEach(x => x.bufferCollection.clearBuffers(x.bufferIds));
         const ftime = performance.now();
         log.info(`cleanup ${cleanupItems} items to ${prettyBytes(cleanupSize)} in ${ftime - stime} ms`);
-    } else
-        log.info(`nothing to cleanup`);
+    }
 }
 
 export const currentStats = () => {
