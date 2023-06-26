@@ -1,1 +1,1 @@
-npm run start:esbuild
+npm run build

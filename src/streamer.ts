@@ -67,7 +67,8 @@ export const currentStats = () => {
             bufferRange: x._bufferArray.bufferRange,
             numberOfStreams: x.MyGotStreamCount,
             bufferArrayLength: x._bufferArray.bufferArrayCount,
-            bufferArraySize: prettyBytes(x._bufferArray.bufferSize)
+            bufferArraySize: prettyBytes(x._bufferArray.bufferSize),
+            streamStats: x.stats
         };
     });
     return _stmaps;
@@ -76,16 +77,17 @@ export const currentStats = () => {
 class MyGotStream {
     public startPosition = 0;
     public currentPosition = 0;
+    private _lastReaderPosition = 0;
     public lastUsed = new Date();
+    private _drainRequested = false;
     private _gotStream: Request;
     _internalstream: InternalStream;
     _mre = ManualResetEvent.createNew();
     intervalPointer: NodeJS.Timer;
     bus = new EventEmitter();
-    private _lastReaderPosition = 0;
     isSuccessful = false;
-    private _drainRequested = false;
     _streamUrlModel: StreamUrlModel;
+    private _readAheadExceeded = false;
 
     constructor(internalstream: InternalStream, initialPosition: number) {
         this._internalstream = internalstream;
@@ -154,9 +156,11 @@ class MyGotStream {
                 _self._internalstream._bufferArray.push(_buf, _self.currentPosition);
                 _self.currentPosition += _buf.byteLength;
                 _self.lastUsed = new Date();
-                if (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) {    //advance bytes
+                while (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) {    //advance bytes
+                    _self._readAheadExceeded = true;
                     await pEvent(_self.bus, 'unlocked');
                 }
+                _self._readAheadExceeded = false;
             }
         } catch (error) {
             _self._drainRequested ?
@@ -175,6 +179,14 @@ class MyGotStream {
         this.bus.emit('unlocked');
     }
 
+    //maybe a better name needed but this is helpful to advance the position of the stream if it's in read exhaust mode
+    public markLastReaderPosition = (position: number) => {
+        if (this._lastReaderPosition < position) {
+            this._lastReaderPosition = position;
+            this.bus.emit('unlocked');
+        }
+    }
+
     public drainIt = () => {
         log.info(`drain requested so destryoing the existing stream...`);
         this._drainRequested = true;
@@ -182,10 +194,19 @@ class MyGotStream {
         this.bus.emit('unlocked');
     }
 
-    public printStats = () => {
-        const { currentPosition: position, lastUsed, startPosition } = this;
-        return JSON.stringify({ position, lastUsed, startPosition });
+
+    public get stats() {
+        const { lastUsed, startPosition, _lastReaderPosition, _drainRequested, currentPosition, _readAheadExceeded } = this;
+        return {
+            startPosition,
+            lastUsed,
+            currentPosition,
+            lastReaderPosition: _lastReaderPosition,
+            drainRequested: _drainRequested,
+            readAheadExceeded: _readAheadExceeded
+        };
     }
+
 }
 
 interface InternalStreamRequestStreamEventArgs { position: number }
@@ -282,7 +303,7 @@ class InternalStream {
     }
 
     private removeGotStreamInstance = (streamInstance: MyGotStream) => {
-        log.info(`removing the gostream with stats: ${streamInstance.printStats()}`)
+        log.info(`removing the gostream with stats: ${JSON.stringify(streamInstance.stats)}`)
         this._st = this._st.filter(item => item != streamInstance);
     }
 
@@ -327,6 +348,8 @@ class InternalStream {
                 if (__data) {
                     bytesConsumed = __data.bytesConsumed;
                     position = __data.position;
+                    const exisitngStream = _instance._st.find(x => x.CanResolve(position));
+                    exisitngStream?.markLastReaderPosition(position);
                     yield __data.data;
                 } else {
                     if (_instance._streamArray.length == 0) {
@@ -356,6 +379,11 @@ class InternalStream {
 
         return Readable.from(_startStreamer());
     }
+
+    public get stats() {
+        return this._st.map(x => x.stats);
+    }
+
 }
 export interface StreamUrlModel { streamUrl: string, headers: Record<string, string>, speedRank: number, docId: string, status: 'HEALTHY' | 'UNHEALTHY' }
 interface StreamerRequest {
