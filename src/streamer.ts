@@ -63,7 +63,8 @@ export const currentStats = () => {
     const _stmaps = globalStreams.map(x => {
         return {
             imdbId: x._imdbId,
-            size: prettyBytes(x._size),
+            size: x._size,
+            sizeHuman: prettyBytes(x._size),
             bufferRange: x._bufferArray.bufferRange,
             numberOfStreams: x.MyGotStreamCount,
             bufferArrayLength: x._bufferArray.bufferArrayCount,
@@ -246,6 +247,7 @@ class InternalStream {
     }
     performRefresh = async () => {
         try {
+            log.info(`refreshing imdb '${this._imdbId}' streams having size '${this._size}'`);
             this._isRefreshingStreams = true;
             const tempstreams = await InternalStream.acquireStreams(this._imdbId, this._size);
             this.mergeStream(tempstreams);
@@ -257,13 +259,19 @@ class InternalStream {
     }
     mergeStream(streams: StreamUrlModel[]) {
         const docIds = streams.map(x => x.docId);
+        const docIdSpeedRankMap = new Map(streams.map(x => { return [x.docId, x.speedRank] }));//streams.map(x => x.docId);
+
         this._streamArray = [...streams, ...this._streamArray.filter(x => !docIds.includes(x.docId))];
 
         const fastestStream = sort(this._streamArray).desc(x => x.speedRank)[0];
-        // log.info(`merging streams... and finding any new better stream available`);
+        
+        this._st.forEach(x => {
+            x._streamUrlModel.speedRank = docIdSpeedRankMap.get(x._streamUrlModel.docId) || x._streamUrlModel.speedRank;
+        })
+
         for (const currentgotstream of this._st) {
             if (currentgotstream._streamUrlModel.speedRank < fastestStream.speedRank) {
-                log.info(`found a new stream with rank ${fastestStream.speedRank} better than the existing ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
+                log.info(`found a new stream '${new URL(fastestStream.streamUrl).hostname}' with rank ${fastestStream.speedRank} better than the existing '${new URL(currentgotstream._streamUrlModel.streamUrl).hostname}' ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
                 currentgotstream.drainIt(); //drain this stream and let other one consume
             }
         }

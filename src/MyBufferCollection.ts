@@ -128,7 +128,8 @@ class MyBuffer {
             this._buffer = Buffer.concat([this._buffer, ...this._additionalBuffer]);
             this._additionalBuffer = [];
             const ftime = performance.now();
-            log.info(`consolidated ${_additionalBufferCount + 1} buffer items worth of ${prettyBytes(this._length)} in ${ftime - stime} ms!`);
+            const elapsed = (ftime - stime).toFixed(0);
+            log.info(`consolidated ${_additionalBufferCount + 1} buffer items worth of ${prettyBytes(this._length)} in ${elapsed} ms!`);
         }
         return this._buffer;
     }
