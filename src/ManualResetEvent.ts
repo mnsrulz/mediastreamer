@@ -8,11 +8,21 @@ export class ManualResetEvent {
     constructor(initialState = false) {
         this._signaled = initialState;
     }
-    public wait = async (timeout?: number) => {
+    public wait = async (timeout?: number, throwOnTimeout?: boolean) => {
         if (!this._signaled) {
-            await pEvent(this._bus, 'raised', {
-                timeout: timeout
-            });
+            try {
+                await pEvent(this._bus, 'raised', {
+                    timeout: timeout
+                });
+            } catch (error) {
+                if (throwOnTimeout) {
+                    if (error as Error) {
+                        throw error;
+                    } else {
+                        throw new Error('timeout error!');
+                    }
+                }
+            }
         }
     };
 

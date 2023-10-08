@@ -12,6 +12,7 @@ import { sort } from 'fast-sort';
 import { log } from './app.js';
 import { delay, parseContentLengthFromRangeHeader } from './utils.js';
 import config from './config.js';
+import { TypedEventEmitter } from './TypedEventEmitter.js';
 
 
 const globalStreams: InternalStream[] = [];
@@ -211,6 +212,7 @@ class MyGotStream {
 }
 
 interface InternalStreamRequestStreamEventArgs { position: number }
+interface InternalStreamResponseStreamEventArgs { position: number, isSuccessful: boolean }
 
 /*
 TODO:
@@ -223,10 +225,11 @@ TODO:
 4: speed detection would be wonderful to add.
 */
 
+type LocalEventTypes = { 'response': [args: InternalStreamResponseStreamEventArgs], 'pumpresume': [arg1: InternalStreamRequestStreamEventArgs] }
 class InternalStream {
     private _refreshRequested = false;
     _bufferArray = new MyBufferCollection();
-    private _em: EventEmitter = new EventEmitter();
+    private _em = new TypedEventEmitter<LocalEventTypes>();
     private _st: MyGotStream[] = [];
     _imdbId: string;
     _streamArray: StreamUrlModel[];
@@ -264,7 +267,7 @@ class InternalStream {
         this._streamArray = [...streams, ...this._streamArray.filter(x => !docIds.includes(x.docId))];
 
         const fastestStream = sort(this._streamArray).desc(x => x.speedRank)[0];
-        
+
         this._st.forEach(x => {
             x._streamUrlModel.speedRank = docIdSpeedRankMap.get(x._streamUrlModel.docId) || x._streamUrlModel.speedRank;
         })
@@ -327,12 +330,13 @@ class InternalStream {
             const _instance = this;
             const newStream = new MyGotStream(this, args.position);
             this._st.push(newStream);
-            //add some listeners here to remove it if an error occurred in teh mygotstream class.. guess it's already handled
+            //add some listeners here to remove it if an error occurred in the mygotstream class.. guess it's already handled
             newStream.startStreaming()
                 .then(() => _instance.removeGotStreamInstance(newStream));
             await newStream._mre.wait();
-            _instance._em.emit(`response-${args.position}`, {
-                isSuccessful: newStream.isSuccessful
+            _instance._em.emit('response', { 
+                position: args.position, 
+                isSuccessful: newStream.isSuccessful 
             });
         }
     }
@@ -364,18 +368,19 @@ class InternalStream {
                         log.info(`there are no streamable url available to stream`);
                         throw new Error(`there are no streamable url available to stream`);
                     }
-                    _instance._em.emit('pumpresume', { position } as InternalStreamRequestStreamEventArgs);
-                    try {
-                        const resultOfPEvent: { isSuccessful: boolean } = await pEvent(_instance._em, `response-${position}`, {
-                            timeout: 3000
-                        });
-                        if (!resultOfPEvent.isSuccessful) {
+                    _instance._em.emit('pumpresume', { position });
+                    var emset = new ManualResetEvent();
+                    const onPumpResponse = (args: InternalStreamResponseStreamEventArgs) => {
+                        if (args.position === position) {
+                            _instance._em.off('response', onPumpResponse);
+                            emset.set();
+                            if (args.isSuccessful) return;
                             log.info('stream seem to be found broken!!!');
                             streamBroken = true;
                         }
-                    } catch (error) {
-                        //ignore errors as they are mostly of timeout error
                     }
+                    _instance._em.on('response', onPumpResponse);
+                    emset.wait(3000);
                 }
             }
             rawHttpRequest.destroyed ?

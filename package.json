@@ -20,7 +20,7 @@
   "license": "ISC",
   "dependencies": {
     "@fastify/one-line-logger": "^1.2.0",
-    "@fastify/static": "^6.10.2",
+    "@fastify/static": "^6.11.2",
     "dayjs": "^1.11.7",
     "dotenv": "^16.3.1",
     "fast-sort": "^3.4.0",

@@ -40,10 +40,26 @@ interface GetStreamRequest {
     }
 }
 
+fastify.head<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
+    const { imdbid, size } = request.params;
+    const documentSize = parseInt(size.substring(1), 32);
+    const range = parseRangeRequest(documentSize, request.headers['range'])
+        || { start: 0, end: documentSize - 1 };
+
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Accept-Ranges', 'bytes');
+    if (request.headers['range'] && range) {
+        reply.header('Content-Range', `bytes ${range.start}-${range.end}/${documentSize}`);
+        reply.header('Content-Length', range.end - range.start + 1);
+    } else {
+        reply.header('Content-Length', documentSize);
+    }
+});
+
 fastify.get<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
     const { imdbid, size } = request.params;
     if (!size.startsWith('S')) throw new Error('Only request with size starts with S supported!');
-
+    
     const documentSize = parseInt(size.substring(1), 32);
     const range = parseRangeRequest(documentSize, request.headers['range'])
         || { start: 0, end: documentSize - 1 };
