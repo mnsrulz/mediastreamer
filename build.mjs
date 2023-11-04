@@ -4,7 +4,7 @@ import esbuildPluginPino from 'esbuild-plugin-pino';
 await esbuild.build({
   entryPoints: ['src/server.ts'],
   bundle: true,
-  outdir: 'out',
+  outdir: 'dist',
   format: 'esm',
   target: 'esnext',
   platform: 'node',

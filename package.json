@@ -2,7 +2,7 @@
   "name": "mediastreamer",
   "version": "1.0.0",
   "description": "",
-  "main": "out/server.js",
+  "main": "dist/server.js",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
