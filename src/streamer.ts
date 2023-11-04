@@ -134,8 +134,9 @@ class MyGotStream {
         }).on('error', (err) => {
             log.error(`error occurred during the gotstream: ${err.message}`);
             _i._mre.set();
-            // internalstream._streamArray = internalstream._streamArray.filter(x => x != this._streamUrlModel);
-            // requestRefresh(this._streamUrlModel.docId);
+            //connectivity errors are reaching here directly.. so enabling stream refresh here.
+            internalstream._streamArray = internalstream._streamArray.filter(x => x != this._streamUrlModel);
+            requestRefresh(this._streamUrlModel.docId);
         });
 
         //this is to show if the stream break the code behaves appropriately.
