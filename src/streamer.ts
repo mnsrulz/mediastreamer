@@ -337,9 +337,9 @@ class InternalStream {
             newStream.startStreaming()
                 .then(() => _instance.removeGotStreamInstance(newStream));
             await newStream._mre.wait();
-            _instance._em.emit('response', { 
-                position: args.position, 
-                isSuccessful: newStream.isSuccessful 
+            _instance._em.emit('response', {
+                position: args.position,
+                isSuccessful: newStream.isSuccessful
             });
         }
     }
@@ -351,7 +351,9 @@ class InternalStream {
             position = start;
         const _instance = this;
         async function* _startStreamer() {
-            let streamBroken = false;
+			const stimer = new streamSpeedTester();
+			try{
+			let streamBroken = false;
             while (!rawHttpRequest.destroyed && !streamBroken) {
                 if (bytesConsumed >= bytesRequested) {
                     log.info(`Guess what! we have reached the conclusion of this stream request.`);
@@ -361,6 +363,14 @@ class InternalStream {
                 const __data = _instance._bufferArray.tryFetch(position, bytesRequested, bytesConsumed);
                 //we should advance the resume if we knew we are about to reach the buffer end
                 if (__data) {
+                    /*
+                    try to detect speed here and add more instances of stream downloader with advance positions
+                    _instance._em.emit('pumpresume', { position + 8MB });
+
+                    we can also look ahead bufferAraay to seek buffer health??
+                    */
+                    stimer.addData(__data.data.byteLength);
+                    
                     bytesConsumed = __data.bytesConsumed;
                     position = __data.position;
                     const exisitngStream = _instance._st.find(x => x.CanResolve(position));
@@ -375,6 +385,7 @@ class InternalStream {
                     var emset = new ManualResetEvent();
                     const onPumpResponse = (args: InternalStreamResponseStreamEventArgs) => {
                         if (args.position === position) {
+                            log.info(`onPumpResponse event called with args: ${args.position}, ${args.isSuccessful}`);
                             _instance._em.off('response', onPumpResponse);
                             emset.set();
                             if (args.isSuccessful) return;
@@ -383,14 +394,17 @@ class InternalStream {
                         }
                     }
                     _instance._em.on('response', onPumpResponse);
-                    emset.wait(3000);
+                    await emset.wait(3000);
                 }
             }
             rawHttpRequest.destroyed ?
                 log.info('request was destroyed') :
                 log.info(`Stream pumpV2 ${streamBroken ? 'broken' : 'finished'} with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
-
-            if (streamBroken) throw new Error('stream broken');
+			
+			if (streamBroken) throw new Error('stream broken');
+			}finally{
+				stimer.Clear();
+            }
         }
 
         return Readable.from(_startStreamer());
@@ -408,4 +422,24 @@ interface StreamerRequest {
 export const streamer = async (req: StreamerRequest) => {
     const existingStream = await InternalStream.create(req);
     return existingStream.pumpV2(req.start, req.end, req.rawHttpMessage);
+}
+
+class streamSpeedTester {
+    //private _lastTimer: Date;
+    private _ct = 0;
+    private tmr: NodeJS.Timer;
+    constructor() {
+        this.tmr = setInterval(() => {
+            log.info(`stream speed: ${prettyBytes(this._ct / 5)}/sec`);
+            this._ct = 0;
+        }, 5000);
+    }
+
+    addData = (d: number) => {
+        this._ct += d;
+    }
+
+    Clear = () => {
+        clearInterval(this.tmr);
+    }
 }
