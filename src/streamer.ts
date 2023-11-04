@@ -283,8 +283,10 @@ class InternalStream {
     private static acquireStreams = async (imdbId: string, size: number) => {
         const links = await getLinks(imdbId, size);
         if (links.length === 0) throw new Error('no valid stream found');
-        return links
-            .map(x => { return { streamUrl: x.playableLink, headers: x.headers, docId: x._id, speedRank: x.speedRank, status: 'HEALTHY' } as StreamUrlModel });
+        const mappedStreams = links
+            .map(x => { return { streamUrl: x.playableLink, headers: x.headers, docId: x.id, speedRank: x.speedRank, status: 'HEALTHY' } as StreamUrlModel });
+        log.info(`acquire ${mappedStreams.length} streams for imdbId: '${imdbId}' with size: '${size}'`)
+        return mappedStreams;
     }
 
     /*
@@ -293,6 +295,7 @@ class InternalStream {
     public static create = async (req: StreamerRequest) => {
         let existingStream = globalStreams.find(s => s._imdbId === req.imdbId && s._size === req.size);
         if (existingStream) {
+            log.info(`stream request already satisfied for ${req.imdbId} with size ${req.size}. So reusing it.`);
             await existingStream.requestRefresh();  //silent refresh of the streams
         } else {
             const tempstreams = await InternalStream.acquireStreams(req.imdbId, req.size);
