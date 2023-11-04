@@ -9,5 +9,5 @@ await esbuild.build({
   target: 'esnext',
   platform: 'node',
   plugins: [esbuildPluginPino({ transports: ['pino-pretty'] })],
-  banner: { js: 'import { createRequire } from \'module\';const require = createRequire(import.meta.url);' }
+  banner: { js: 'import { createRequire } from "module";const require = createRequire(import.meta.url);' }
 })
