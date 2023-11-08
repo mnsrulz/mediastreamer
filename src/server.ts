@@ -40,6 +40,7 @@ interface GetStreamRequest {
     }
 }
 
+//the size param is expected to start with z and followed by string which is base 32 encoded of the actual file size. This is just to make the file name compact :).
 fastify.head<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
     const { imdbid, size } = request.params;
     const documentSize = parseInt(size.substring(1), 32);
@@ -58,7 +59,7 @@ fastify.head<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) =
 
 fastify.get<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
     const { imdbid, size } = request.params;
-    if (!size.startsWith('S')) throw new Error('Only request with size starts with S supported!');
+    if (!size.startsWith('z')) throw new Error('Only request with size starts with z supported!');
     
     const documentSize = parseInt(size.substring(1), 32);
     const range = parseRangeRequest(documentSize, request.headers['range'])
