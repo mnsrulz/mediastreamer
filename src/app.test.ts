@@ -1,10 +1,9 @@
 import test from 'ava';
-import { MyBufferCollection } from './MyBufferCollection.js';
-import { parseRangeRequest } from './utils.js';
-
+import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
+import { parseRangeRequest } from './utils/utils.js';
 
 test('buffer collection consolidate buffers test', t => {
-    const bc = new MyBufferCollection();
+    const bc = new VirtualBufferCollection();
     bc.push(Buffer.from('abc'), 0);
     bc.push(Buffer.from('def'), 3);
     bc.push(Buffer.from('vw'), 21);

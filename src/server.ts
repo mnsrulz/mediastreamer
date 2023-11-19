@@ -3,22 +3,22 @@ import config from './config.js';
 
 import { fastify } from './app.js';
 import { streamer, currentStats, clearBuffers } from './streamer.js';
-import { parseRangeRequest } from './utils.js';
+import { parseRangeRequest } from './utils/utils.js';
 import path from 'path';
 
 fastify.addContentTypeParser('*', { parseAs: 'buffer' }, function (request, payload, done) { done(null); });
 
 const __dirname = path.resolve();
 
-fastify.register(require('@fastify/static'), {
-    root: path.join(__dirname, 'public'),
-    prefix: '/public/'//, // optional: default '/'
-    //constraints: { host: 'example.com' } // optional: default {}
-})
+// fastify.register(require('@fastify/static'), {
+//     root: path.join(__dirname, 'public'),
+//     prefix: '/public/'//, // optional: default '/'
+//     //constraints: { host: 'example.com' } // optional: default {}
+// })
 
-fastify.get('/', async (request, reply) => {
-    return reply.sendFile('stats.htm', path.join(__dirname, '/views/'))
-})
+// fastify.get('/', async (request, reply) => {
+//     return reply.sendFile('stats.htm', path.join(__dirname, '/views/'))
+// })
 
 setInterval(clearBuffers, config.AUTO_CLEAR_BUFFERS_INTERVAL);   //register an auto cleanup
 
