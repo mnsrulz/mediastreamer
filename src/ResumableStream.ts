@@ -64,9 +64,11 @@ export class ResumableStream extends TypedEventEmitter<ResumableStreamEventTypes
             }
             _i._mre.set();
         }).on('error', (err) => {
-            log.error(`error occurred during the gotstream: ${err.message}`);
-            _i._mre.set();
-            _i.emit('error', err );
+            if (!_i.isSuccessful) {   //only if it's unsuccessful emit an error
+                log.error(`error occurred during the gotstream: ${err.message}`);
+                _i._mre.set();
+                _i.emit('error', err);
+            }
         });
 
         //this is to show if the stream break the code behaves appropriately.
