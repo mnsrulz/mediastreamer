@@ -87,6 +87,7 @@ export class ResumableStream {
                     this._readAheadExceeded = true;
                     //await pEvent(this.bus, 'unlocked');    //do we need a bus?
                     log.info(`stream read ahead exhausted. Pausing for a while`);
+                    this._mre.reset();
                     await this._mre.wait();
                     this._readAheadExceeded = false;
                     log.info(`resuming the traversal of stream!`);
@@ -107,7 +108,7 @@ export class ResumableStream {
         this.lastUsed = new Date();
         this._lastReaderPosition = this.currentPosition;
         //this.bus.emit('unlocked');
-        this._mre.reset();
+        this._mre.set();
     };
 
     //maybe a better name needed but this is helpful to advance the position of the stream if it's in read exhaust mode
@@ -115,7 +116,7 @@ export class ResumableStream {
         if (this._lastReaderPosition < position) {
             this._lastReaderPosition = position;
             //this.bus.emit('unlocked');
-            this._mre.reset();
+            this._mre.set();
         }
     };
 
@@ -124,7 +125,7 @@ export class ResumableStream {
         this._drainRequested = true;
         this._gotStream.destroy();
         //this.bus.emit('unlocked');
-        this._mre.reset();
+        this._mre.set();
     };
 
     public get stats() {

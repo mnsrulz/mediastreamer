@@ -8,6 +8,7 @@ export class ManualResetEvent {
     constructor(initialState = false) {
         this._signaled = initialState;
     }
+    ///Wait for the signal. Make sure to call the reset before this method.
     public wait = async (timeout?: number, throwOnTimeout?: boolean) => {
         if (!this._signaled) {
             try {
@@ -26,6 +27,7 @@ export class ManualResetEvent {
         }
     };
 
+    ///Signal the awaiter to proceed
     public set() {
         if (this._signaled)
             return;
