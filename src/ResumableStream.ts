@@ -83,20 +83,19 @@ export class ResumableStream {
                 this._bf.push(_buf, this.currentPosition);      //_self.emit('data', { buffer: _buf, position: _self.currentPosition });
                 this.currentPosition += _buf.byteLength;
                 this.lastUsed = new Date();
-                while (this.currentPosition > this._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) { //advance bytes
+                while (!this._drainRequested && this.currentPosition > this._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) { //advance bytes
                     this._readAheadExceeded = true;
                     //await pEvent(this.bus, 'unlocked');    //do we need a bus?
                     log.info(`stream read ahead exhausted. Pausing for a while`);
                     this._mre.reset();
                     await this._mre.wait();
                     this._readAheadExceeded = false;
-                    log.info(`resuming the traversal of stream!`);
                 }
             }
         } catch (error) {
             this._drainRequested ?
-                log.info(`stream ended as drain requested`) :
-                log.error(`error occurred while iterating the stream...`); //in case of errors the system will just create a new stream automatically.
+                log.info(`stream ended as drain requested. Actual Err: ${(error as Error)?.message}`) :
+                log.error(`error occurred while iterating the stream. Actual Err: ${(error as Error)?.message}`); //in case of errors the system will just create a new stream automatically.
         } finally {
             clearInterval(this._intervalPointer);
         }

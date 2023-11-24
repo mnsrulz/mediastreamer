@@ -144,7 +144,7 @@ class InternalStream {
                 newStream.startStreaming()
                     .finally(() => removeGotStreamInstance(newStream));                
             } catch (error) {
-                log.error(error)
+                log.error((error as Error)?.message)
                 this._streamArray = this._streamArray.filter(x => x != firstStreamUrlModel);
                 requestRefresh(firstStreamUrlModel.docId);
             }
