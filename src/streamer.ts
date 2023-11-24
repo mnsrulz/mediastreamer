@@ -10,11 +10,19 @@ import { delay } from './utils/utils.js';
 import config from './config.js';
 import { TypedEventEmitter } from './TypedEventEmitter.js';
 import { StreamSpeedTester } from './utils/streamSpeedTester.js';
-import { ResumableStream } from './ResumableStream.js';
+import { streamerv2, ResumableStream } from './ResumableStream.js';
 import { StreamUrlModel } from './models/StreamUrlModel.js';
 
 const globalStreams: InternalStream[] = [];
 
+const acquireStreams = async (imdbId: string, size: number) => {
+    const links = await getLinks(imdbId, size);
+    if (links.length === 0) throw new Error(`no valid stream found for imdbId: ${imdbId} with size: ${size}`);
+    const mappedStreams = links
+        .map(x => { return { streamUrl: x.playableLink, headers: x.headers, docId: x.id, speedRank: x.speedRank, status: 'HEALTHY' } as StreamUrlModel });
+    log.info(`acquire ${mappedStreams.length} streams for imdbId: '${imdbId}' with size: '${size}'`)
+    return mappedStreams;
+}
 
 
 interface InternalStreamRequestStreamEventArgs { position: number }
@@ -58,7 +66,7 @@ class InternalStream {
         try {
             log.info(`refreshing imdb '${this._imdbId}' streams having size '${this._size}'`);
             this._isRefreshingStreams = true;
-            const tempstreams = await InternalStream.acquireStreams(this._imdbId, this._size);
+            const tempstreams = await acquireStreams(this._imdbId, this._size);
             this.mergeStream(tempstreams);
         } catch (error) {
             log.error(error);
@@ -86,14 +94,6 @@ class InternalStream {
         }
     }
 
-    private static acquireStreams = async (imdbId: string, size: number) => {
-        const links = await getLinks(imdbId, size);
-        if (links.length === 0) throw new Error(`no valid stream found for imdbId: ${imdbId} with size: ${size}`);
-        const mappedStreams = links
-            .map(x => { return { streamUrl: x.playableLink, headers: x.headers, docId: x.id, speedRank: x.speedRank, status: 'HEALTHY' } as StreamUrlModel });
-        log.info(`acquire ${mappedStreams.length} streams for imdbId: '${imdbId}' with size: '${size}'`)
-        return mappedStreams;
-    }
 
     /*
     Look for an existing stream which can satisfy the request. If not create one.
@@ -104,7 +104,7 @@ class InternalStream {
             log.info(`stream request already satisfied for ${req.imdbId} with size ${req.size}. So reusing it.`);
             await existingStream.requestRefresh();  //silent refresh of the streams
         } else {
-            const tempstreams = await InternalStream.acquireStreams(req.imdbId, req.size);
+            const tempstreams = await acquireStreams(req.imdbId, req.size);
             existingStream = new InternalStream(req.imdbId, req.size, tempstreams);
             globalStreams.push(existingStream);
         }
@@ -119,7 +119,6 @@ class InternalStream {
         this._imdbId = imdbId;
         this._size = size;
         this._streamArray = streams;
-        this._em.on('pumpresume', this.streamHandler);
     }
 
     private removeGotStreamInstance = (streamInstance: ResumableStream) => {
@@ -136,25 +135,19 @@ class InternalStream {
         }
         else {
             log.info(`constructing new MyGotStream with args: ${JSON.stringify(args)}`);
-            const _instance = this;
-            const firstStreamUrlModel = sort(_instance._streamArray).desc(x => x.speedRank)[0];
-            const newStream = new ResumableStream(firstStreamUrlModel, _instance._size, args.position);
-            newStream.on('data', ({ buffer, position }) => {
-                _instance._bufferArray.push(buffer, position);
-            })
-            newStream.on('error', () => {
-                _instance._streamArray = _instance._streamArray.filter(x => x != firstStreamUrlModel);
+            const { _em, _st, _size, _bufferArray, _streamArray, removeGotStreamInstance } = this;
+            const firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
+
+            try {
+                const newStream = await streamerv2(firstStreamUrlModel, _bufferArray, _size, args.position);
+                _st.push(newStream);
+                newStream.startStreaming()
+                    .finally(() => removeGotStreamInstance(newStream));
+            } catch (error) {
+                log.error(error)
+                this._streamArray = this._streamArray.filter(x => x != firstStreamUrlModel);
                 requestRefresh(firstStreamUrlModel.docId);
-            });
-            this._st.push(newStream);
-            //add some listeners here to remove it if an error occurred in the mygotstream class.. guess it's already handled
-            newStream.startStreaming()
-                .then(() => _instance.removeGotStreamInstance(newStream));
-            await newStream._mre.wait();
-            _instance._em.emit('response', {
-                position: args.position,
-                isSuccessful: newStream.isSuccessful
-            });
+            }
         }
     }
 
@@ -167,8 +160,7 @@ class InternalStream {
         async function* _startStreamer() {
             const stimer = new StreamSpeedTester();
             try {
-                let streamBroken = false;
-                while (!rawHttpRequest.destroyed && !streamBroken) {
+                while (!rawHttpRequest.destroyed) {
                     if (bytesConsumed >= bytesRequested) {
                         log.info(`Guess what! we have reached the conclusion of this stream request.`);
                         break;
@@ -191,31 +183,13 @@ class InternalStream {
                         exisitngStream?.markLastReaderPosition(position);
                         yield __data.data;
                     } else {
-                        if (_instance._streamArray.length == 0) {
-                            log.info(`there are no streamable url available to stream`);
-                            throw new Error(`there are no streamable url available to stream`);
-                        }
-                        _instance._em.emit('pumpresume', { position });
-                        var emset = new ManualResetEvent();
-                        const onPumpResponse = (args: InternalStreamResponseStreamEventArgs) => {
-                            if (args.position === position) {
-                                log.info(`onPumpResponse event called with args: ${args.position}, ${args.isSuccessful}`);
-                                _instance._em.off('response', onPumpResponse);
-                                emset.set();
-                                if (args.isSuccessful) return;
-                                log.info('stream seem to be found broken!!!');
-                                streamBroken = true;
-                            }
-                        }
-                        _instance._em.on('response', onPumpResponse);
-                        await emset.wait(3000);
+                        _instance.throwIfNoStreamUrlPresent();
+                        await _instance.streamHandler({ position  });
                     }
                 }
                 rawHttpRequest.destroyed ?
                     log.info('request was destroyed') :
-                    log.info(`Stream pumpV2 ${streamBroken ? 'broken' : 'finished'} with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
-
-                if (streamBroken) throw new Error('stream broken');
+                    log.info(`Stream pumpV2 finished with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
             } finally {
                 stimer.Clear();
             }
@@ -226,6 +200,10 @@ class InternalStream {
 
     public get stats() {
         return this._st.map(x => x.stats);
+    }
+
+    private throwIfNoStreamUrlPresent = () => {
+        if (this._streamArray.length == 0) throw new Error(`there are no streamable url available to stream`);
     }
 
 }
