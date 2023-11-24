@@ -127,10 +127,10 @@ class InternalStream {
     }
 
     private streamHandler = async (args: InternalStreamRequestStreamEventArgs) => {
-        log.trace(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
+        log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
         const exisitngStream = this._st.find(x => x.CanResolve(args.position));
         if (exisitngStream) {
-            log.trace(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
+            log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
             exisitngStream.resume();
         }
         else {
@@ -142,7 +142,7 @@ class InternalStream {
                 const newStream = await streamerv2(firstStreamUrlModel, _bufferArray, _size, args.position);
                 _st.push(newStream);
                 newStream.startStreaming()
-                    .finally(() => removeGotStreamInstance(newStream));
+                    .finally(() => removeGotStreamInstance(newStream));                
             } catch (error) {
                 log.error(error)
                 this._streamArray = this._streamArray.filter(x => x != firstStreamUrlModel);
@@ -185,6 +185,7 @@ class InternalStream {
                     } else {
                         _instance.throwIfNoStreamUrlPresent();
                         await _instance.streamHandler({ position  });
+                        await delay(1000);   //wait for 300ms    --kind of hackyy
                     }
                 }
                 rawHttpRequest.destroyed ?

@@ -86,8 +86,10 @@ export class ResumableStream {
                 while (this.currentPosition > this._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) { //advance bytes
                     this._readAheadExceeded = true;
                     //await pEvent(this.bus, 'unlocked');    //do we need a bus?
+                    log.info(`stream read ahead exhausted. Pausing for a while`);
                     await this._mre.wait();
                     this._readAheadExceeded = false;
+                    log.info(`resuming the traversal of stream!`);
                 }
             }
         } catch (error) {
