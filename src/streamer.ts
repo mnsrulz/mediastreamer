@@ -127,10 +127,10 @@ class InternalStream {
     }
 
     private streamHandler = async (args: InternalStreamRequestStreamEventArgs) => {
-        log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
+        //log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
         const exisitngStream = this._st.find(x => x.CanResolve(args.position));
         if (exisitngStream) {
-            log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
+            //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
             exisitngStream.resume();
         }
         else {
