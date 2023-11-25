@@ -126,15 +126,20 @@ class InternalStream {
         this._st = this._st.filter(item => item != streamInstance);
     }
 
+    private _pendingStreams = new Set<number>();
     private streamHandler = async (args: InternalStreamRequestStreamEventArgs) => {
         //log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
         const exisitngStream = this._st.find(x => x.CanResolve(args.position));
         if (exisitngStream) {
             //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
             exisitngStream.resume();
+        } else if (this._pendingStreams.has(args.position)) {   //if the streamer is in pending state await for few seconds.
+            log.warn(`${this._imdbId} - There is already a stream request awaiting for position: ${args.position} for size: ${this._size}. Waiting for a few seconds to let it resolve.`);
+            await delay(3000);
         }
         else {
-            log.info(`constructing new MyGotStream with args: ${JSON.stringify(args)}`);
+            log.info(`${this._imdbId} - constructing a new stream with args: ${JSON.stringify(args)} for size: ${this._size}`);
+            this._pendingStreams.add(args.position);
             const { _em, _st, _size, _bufferArray, _streamArray, removeGotStreamInstance } = this;
             const firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
 
@@ -142,11 +147,13 @@ class InternalStream {
                 const newStream = await streamerv2(firstStreamUrlModel, _bufferArray, _size, args.position);
                 _st.push(newStream);
                 newStream.startStreaming()
-                    .finally(() => removeGotStreamInstance(newStream));                
+                    .finally(() => removeGotStreamInstance(newStream));
             } catch (error) {
                 log.error((error as Error)?.message)
                 this._streamArray = this._streamArray.filter(x => x != firstStreamUrlModel);
                 requestRefresh(firstStreamUrlModel.docId);
+            } finally {
+                this._pendingStreams.delete(args.position);
             }
         }
     }
@@ -184,7 +191,7 @@ class InternalStream {
                         yield __data.data;
                     } else {
                         _instance.throwIfNoStreamUrlPresent();
-                        await _instance.streamHandler({ position  });
+                        await _instance.streamHandler({ position });
                         await delay(1000);   //wait for 300ms    --kind of hackyy
                     }
                 }
