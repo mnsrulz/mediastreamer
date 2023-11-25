@@ -65,7 +65,7 @@ export class VirtualBuffer {
             this._additionalBuffer = [];
             const ftime = performance.now();
             const elapsed = (ftime - stime).toFixed(0);
-            log.info(`consolidated ${_additionalBufferCount + 1} buffer items worth of ${prettyBytes(this._length)} in ${elapsed} ms!`);
+            //log.info(`consolidated ${_additionalBufferCount + 1} buffer items worth of ${prettyBytes(this._length)} in ${elapsed} ms!`);
         }
         return this._buffer;
     }
