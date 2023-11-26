@@ -192,8 +192,8 @@ class InternalStream {
                     } else {
                         _instance.throwIfNoStreamUrlPresent();
                         await _instance.streamHandler({ position });
-                        await delay(1000);   //wait for 300ms    --kind of hackyy
                     }
+                    await delay(300);   //wait for 300ms    --kind of hackyy
                 }
                 rawHttpRequest.destroyed ?
                     log.info('request was destroyed') :
