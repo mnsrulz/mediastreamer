@@ -83,6 +83,12 @@ export class ResumableStream {
                 this._bf.push(_buf, this.currentPosition);      //_self.emit('data', { buffer: _buf, position: _self.currentPosition });
                 this.currentPosition += _buf.byteLength;
                 this.lastUsed = new Date();
+
+                if(this._bf.existingBufferWhichCanSatisfyPosition(this.currentPosition)) {
+                    log.info(`there's already a buffer which can satisfy upcomping buffer position '${this.currentPosition}' so breaking this stream.`);
+                    break;
+                }
+
                 while (!this._drainRequested && this.currentPosition > this._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) { //advance bytes
                     this._readAheadExceeded = true;
                     //await pEvent(this.bus, 'unlocked');    //do we need a bus?
@@ -139,78 +145,3 @@ export class ResumableStream {
         };
     }
 }
-
-
-// class stv2 {
-//     private _stream
-//     constructor(st: ReadableStream) {
-//         this._stream = stream.Readable.fromWeb(st);
-//     }
-
-//     public get r() {
-//         //return this._stream;
-//         async function* _startStreamer() {
-//             for await (const chunk of this._stream) {
-//                 const _buf = (chunk as Buffer);
-//                 _self.emit('data', { buffer: _buf, position: _self.currentPosition });
-//                 //_self._internalstream._bufferArray.push(_buf, _self.currentPosition);
-//                 _self.currentPosition += _buf.byteLength;
-//                 _self.lastUsed = new Date();
-//                 while (!_self._drainRequested && _self.currentPosition > _self._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) { //advance bytes
-//                     _self._readAheadExceeded = true;
-//                     await pEvent(_self.bus, 'unlocked');
-//                 }
-//                 _self._readAheadExceeded = false;
-//             }
-//         }
-//         return Readable.from(_startStreamer())
-//     }
-
-
-// }
-
-
-// import { default as stream } from 'node:stream'
-// import type { ReadableStream } from 'node:stream/web'
-// import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
-
-// export const streamerv2 = async (streamUrlModel: StreamUrlModel, bf: VirtualBufferCollection, size: number, initialPosition: number) => {
-//     const _internalHeaders = streamUrlModel.headers || {};
-//     _internalHeaders['Range'] = `bytes=${initialPosition}-`;
-
-//     const response = await fetch(streamUrlModel.streamUrl, { headers: _internalHeaders });
-//     if (response.status >= 200 && response.status < 300) {
-//         const contentLengthHeader = parseInt(response.headers.get('content-length') || '0');
-//         const potentialContentLength = parseContentLengthFromRangeHeader(response.headers.get('content-range') || '')
-//             || contentLengthHeader;
-
-//         if (size !== potentialContentLength) {
-//             log.info(`content length mismatch: E/A ${size}/${potentialContentLength}`);
-//         } else {
-//             log.info(`successful stream acquired with matching content length ${potentialContentLength}`);
-//         }
-//     } else {
-//         log.warn(`non successfull response code received: ${response.status}`);
-//     }
-
-//     if (response.body) {
-//         let currentPosition = 0;
-//         let lastUsed = new Date();
-//         for await (const chunk of stream.Readable.fromWeb(response.body as ReadableStream<Uint8Array>)) {
-//             const _buf = (chunk as Buffer);
-//             bf.push(_buf, currentPosition);
-//             currentPosition += _buf.byteLength;
-//             lastUsed = new Date();
-//             while (!_self._drainRequested && currentPosition > _self._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) { //advance bytes
-//                 _self._readAheadExceeded = true;
-//                 await pEvent(_self.bus, 'unlocked');
-//             }
-//             _self._readAheadExceeded = false;
-//         }
-//     }
-//     throw new Error(`null body received!`)
-// }
-
-
-
-
