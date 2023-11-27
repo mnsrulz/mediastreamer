@@ -10,6 +10,7 @@
   "scripts": {
     "test": "ava",
     "test:watch": "ava --watch",
+    "test:tsx": "node --watch --loader tsx --test test/*test.ts",
     "build": "node build.mjs",
     "start:esmwatch": "node --watch .",
     "start:frontail": "node . | frontail --ui-highlight --ui-highlight-preset frontrailpresets\\npmlog.json --disable-usage-stats -p 9002 -n 80 -",
@@ -33,26 +34,12 @@
   "devDependencies": {
     "@ava/typescript": "^4.0.0",
     "ava": "^5.3.0",
-    "esbuild": "^0.17.1",
-    "esbuild-plugin-pino": "^2.0.0",
+    "esbuild": "^0.19.7",
+    "esbuild-plugin-pino": "^2.1.0",
     "pino-pretty": "^10.0.0",
     "ts-node": "^10.9.1",
     "ts-node-dev": "^2.0.0",
-    "tsx": "^3.12.7",
+    "tsx": "^3.14.0",
     "typescript": "^5.3.2"
-  },
-  "ava": {
-    "files": [
-      "src/*.test.ts"
-    ],
-    "typescript": {
-      "rewritePaths": {
-        "src/": "dist/"
-      },
-      "compile": "tsc",
-      "extensions": [
-        "ts"
-      ]
-    }
   }
 }
