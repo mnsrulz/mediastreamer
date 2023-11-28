@@ -25,7 +25,7 @@ const acquireStreams = async (imdbId: string, size: number) => {
 }
 
 
-interface InternalStreamRequestStreamEventArgs { position: number }
+interface InternalStreamRequestStreamEventArgs { position: number, compensatingSlowStream?: boolean, slowStreamStreamModel?: StreamUrlModel }
 interface InternalStreamResponseStreamEventArgs { position: number, isSuccessful: boolean }
 
 /*
@@ -126,23 +126,27 @@ class InternalStream {
         this._st = this._st.filter(item => item != streamInstance);
     }
 
-    private _pendingStreams = new Set<number>();
     private streamHandler = async (args: InternalStreamRequestStreamEventArgs) => {
         //log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
         const exisitngStreams = this._st.filter(x => x.CanResolve(args.position));
-        if (exisitngStreams) {
+        if (exisitngStreams.length > 0) {
             //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
-            exisitngStreams.forEach(x => x.resume());
+            if (exisitngStreams.length > 1) {
+                log.warn(`multiple streams found which can satisfy position:${args.position}. Going with the first one.`);
+            }
+            exisitngStreams[0].resume();
         }
-        // else if (this._pendingStreams.has(args.position)) {   //if the streamer is in pending state await for few seconds.
-        //     log.warn(`${this._imdbId} - There is already a stream request awaiting for position: ${args.position} for size: ${this._size}. Waiting for a few seconds to let it resolve.`);
-        //     await delay(3000);
-        // }
         else {
             log.info(`${this._imdbId} - constructing a new stream with args: ${JSON.stringify(args)} for size: ${this._size}`);
-            this._pendingStreams.add(args.position);
             const { _em, _st, _size, _bufferArray, _streamArray, removeGotStreamInstance } = this;
-            const firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
+            let firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
+            if (args.compensatingSlowStream) {
+                try {
+                    firstStreamUrlModel = sort(_streamArray.filter(x => x != args.slowStreamStreamModel)).desc(x => x.speedRank)[0] || firstStreamUrlModel;
+                } catch (error) {
+                    log.error(`unable to find stream url model to compensate the stream. Orignal err: ${(error as Error)?.message}`);
+                }
+            }
 
             try {
                 const newStream = await streamerv2(firstStreamUrlModel, _bufferArray, _size, args.position);
@@ -153,8 +157,6 @@ class InternalStream {
                 log.error((error as Error)?.message)
                 this._streamArray = this._streamArray.filter(x => x != firstStreamUrlModel);
                 requestRefresh(firstStreamUrlModel.docId);
-            } finally {
-                this._pendingStreams.delete(args.position);
             }
         }
     }
@@ -168,6 +170,7 @@ class InternalStream {
         async function* _startStreamer() {
             const stimer = new StreamSpeedTester();
             try {
+                let lastKnownStreamInstance = null;
                 while (!rawHttpRequest.destroyed) {
                     if (bytesConsumed >= bytesRequested) {
                         log.info(`Guess what! we have reached the conclusion of this stream request.`);
@@ -187,14 +190,35 @@ class InternalStream {
 
                         bytesConsumed = __data.bytesConsumed;
                         position = __data.position;
-                        const exisitngStream = _instance._st.find(x => x.CanResolve(position));
-                        exisitngStream?.markLastReaderPosition(position);
+                        if (lastKnownStreamInstance && lastKnownStreamInstance.CanResolve(position)) {
+                            lastKnownStreamInstance.markLastReaderPosition(position);
+                        } else {
+                            lastKnownStreamInstance = _instance._st.find(x => x.CanResolve(position));
+                            lastKnownStreamInstance?.markLastReaderPosition(position);
+                        }
+
+                        if (lastKnownStreamInstance) {
+                            if (!lastKnownStreamInstance.slowStreamHandled && lastKnownStreamInstance.isSlowStream) {
+                                lastKnownStreamInstance?.markSlowStreamHandled(lastKnownStreamInstance.currentPosition + 8000000);
+
+                                if (lastKnownStreamInstance.currentPosition + 8000000 > _instance._size) {
+                                    log.warn(`slow stream detected, but the current stream cannot be bisected as the remaining length is not enough long to hold another 8MB.`);
+                                } else {
+                                    log.warn(`slow stream detected, adding another stream to compensate slow stream.`);
+                                    _instance.streamHandler({ 
+                                        position: lastKnownStreamInstance.currentPosition + 8000000, 
+                                        compensatingSlowStream: true, slowStreamStreamModel: lastKnownStreamInstance._streamUrlModel 
+                                    });
+                                }
+                            }
+                        }
+
                         yield __data.data;
                     } else {
                         _instance.throwIfNoStreamUrlPresent();
                         await _instance.streamHandler({ position });
+                        await delay(300);   //wait for 300ms    --kind of hackyy
                     }
-                    await delay(300);   //wait for 300ms    --kind of hackyy
                 }
                 rawHttpRequest.destroyed ?
                     log.info('request was destroyed') :
