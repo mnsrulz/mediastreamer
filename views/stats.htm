@@ -26,8 +26,8 @@
 
 <body>
     <script type="module">
-        import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js'
-        import { vm } from "/public/app.js";
+        import { createApp } from 'https://esm.sh/vue@3.4.15?bundle';
+        import { vm } from "./public/app.js";
         createApp(vm).mount('#app');
     </script>
     <div id="app" v-cloak style="margin-top: 50px;">

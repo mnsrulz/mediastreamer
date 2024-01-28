@@ -18,10 +18,11 @@ app.register((route, opts, next) => {
         prefix: '/public/'
     });
 
-    route.get('', async (request, reply) => {
+    route.get('/', async (request, reply) => {
+        if(!request.routerPath.endsWith('/')) return reply.redirect(`${request.routerPath}/`);
         return reply.sendFile('stats.htm', path.join(__dirname, '/views/'));
     });
-
+    
     route.get('/cleanup', async (request, reply) => {
         clearBuffers();
         reply.type('application/json').code(200)

@@ -1,5 +1,5 @@
-import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
-const apiResponse = await fetch('/stats');
+import * as Plot from "https://esm.sh/@observablehq/plot@0.6.13?bundle";
+const apiResponse = await fetch('stats');
 const apiData = await apiResponse.json();
 const fn1 = (imdbId) => {
     const { bufferRange, size } = apiData.find(x => x.imdbId === imdbId);
@@ -73,7 +73,7 @@ export const vm = {
     },
     data() {
         return {
-            selectedImdbId: apiData[0].imdbId,
+            selectedImdbId: Array.isArray(apiData) && apiData.length>0 && apiData[0].imdbId,
             items: apiData,
             hello: 'world'
         }
