@@ -18,7 +18,7 @@ app.register((route, opts, next) => {
         prefix: '/public/'
     });
 
-    route.get('/', async (request, reply) => {
+    route.get('', async (request, reply) => {
         return reply.sendFile('stats.htm', path.join(__dirname, '/views/'));
     });
 
