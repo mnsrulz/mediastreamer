@@ -7,4 +7,5 @@ export default {
     maxChunkSizeMB: parseInt(process.env.MAX_CHUNK_SIZE_MB || '8'),
     readAheadSizeMB: parseInt(process.env.READ_AHEAD_SIZE_MB || '8'),
     linksApiUrl: process.env.LINKS_API_URL || 'http://admin:admin@localhost:8000',
+    rootPath: process.env.ROOT_PATH || '/'
 }

@@ -5,12 +5,14 @@ A simple nodejs api capable of streaming content from url(s) in effective manner
 ## Environment vars
 Server supports the env file to load env vars. Simply create an .env file in the root directory. Following options are available
 ```
+PORT=3000
 NODE_TLS_REJECT_UNAUTHORIZED=0
 MAX_BUFFER_SIZE_MB=200
 MAX_CHUNK_SIZE_MB=8
 READ_AHEAD_SIZE_MB=8
 LINKS_REFRESH_INTERVAL_MS=30000
 LINKS_API_URL=http://admin:admin@localhost:8000
+ROOT_PATH=/
 ```
 
 # Sequence diagram
