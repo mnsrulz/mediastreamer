@@ -8,6 +8,6 @@ await esbuild.build({
   format: 'esm',
   target: 'esnext',
   platform: 'node',
-  plugins: [esbuildPluginPino({ transports: ['pino-pretty'] })],
+  plugins: [esbuildPluginPino({ transports: ['pino-pretty', '@logtail/pino'] })],
   banner: { js: 'import { createRequire } from "module";const require = createRequire(import.meta.url);' }
 })
