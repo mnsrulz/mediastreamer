@@ -17,10 +17,10 @@ const globalStreams: InternalStream[] = [];
 
 const acquireStreams = async (imdbId: string, size: number) => {
     const links = await getLinks(imdbId, size);
-    if (links.length === 0) throw new Error(`no valid stream found for imdbId: ${imdbId} with size: ${size}`);
+    if (links.length === 0) throw new Error(`No valid stream found for imdbId: ${imdbId} with size: ${size}`);
     const mappedStreams = links
         .map(x => { return { streamUrl: x.playableLink, headers: x.headers, docId: x.id, speedRank: x.speedRank, status: 'HEALTHY' } as StreamUrlModel });
-    log.info(`acquire ${mappedStreams.length} streams for imdbId: '${imdbId}' with size: '${size}'`)
+    log.trace(`Found ${mappedStreams.length} healthy streams for imdbId: '${imdbId}' with size: '${size}'`)
     return mappedStreams;
 }
 
@@ -64,7 +64,7 @@ class InternalStream {
     }
     performRefresh = async () => {
         try {
-            log.info(`refreshing imdb '${this._imdbId}' streams having size '${this._size}'`);
+            log.trace(`Refreshing streams for imdb '${this._imdbId}' having size '${this._size}'`);
             this._isRefreshingStreams = true;
             const tempstreams = await acquireStreams(this._imdbId, this._size);
             this.mergeStream(tempstreams);
@@ -88,7 +88,7 @@ class InternalStream {
 
         for (const currentgotstream of this._st) {
             if (currentgotstream._streamUrlModel.speedRank < fastestStream.speedRank) {
-                log.info(`found a new stream '${new URL(fastestStream.streamUrl).hostname}' with rank ${fastestStream.speedRank} better than the existing '${new URL(currentgotstream._streamUrlModel.streamUrl).hostname}' ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
+                log.info(`Found a new stream '${new URL(fastestStream.streamUrl).hostname}' with rank ${fastestStream.speedRank} better than the existing '${new URL(currentgotstream._streamUrlModel.streamUrl).hostname}' ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
                 currentgotstream.drainIt(); //drain this stream and let other one consume
             }
         }
@@ -101,7 +101,7 @@ class InternalStream {
     public static create = async (req: StreamerRequest) => {
         let existingStream = globalStreams.find(s => s._imdbId === req.imdbId && s._size === req.size);
         if (existingStream) {
-            log.info(`stream request already satisfied for ${req.imdbId} with size ${req.size}. So reusing it.`);
+            log.info(`Stream request already satisfied for ${req.imdbId} with size ${req.size}. So reusing it.`);
             await existingStream.requestRefresh();  //silent refresh of the streams
         } else {
             const tempstreams = await acquireStreams(req.imdbId, req.size);
@@ -122,7 +122,7 @@ class InternalStream {
     }
 
     private removeGotStreamInstance = (streamInstance: ResumableStream) => {
-        log.info(`removing the gostream with stats: ${JSON.stringify(streamInstance.stats)}`)
+        log.info(`Removing the gostream with stats: ${JSON.stringify(streamInstance.stats)}`)
         this._st = this._st.filter(item => item != streamInstance);
     }
 
@@ -132,19 +132,19 @@ class InternalStream {
         if (exisitngStreams.length > 0) {
             //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
             if (exisitngStreams.length > 1) {
-                log.warn(`multiple streams found which can satisfy position:${args.position}. Going with the first one.`);
+                log.warn(`Multiple streams found which can satisfy position:${args.position}. Going with the first one.`);
             }
             exisitngStreams[0].resume();
         }
         else {
-            log.info(`${this._imdbId} - constructing a new stream with args: ${JSON.stringify(args)} for size: ${this._size}`);
+            log.info(`${this._imdbId} - Constructing a new stream with args: ${JSON.stringify(args)} for size: ${this._size}`);
             const { _em, _st, _size, _bufferArray, _streamArray, removeGotStreamInstance } = this;
             let firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
             if (args.compensatingSlowStream) {
                 try {
                     firstStreamUrlModel = sort(_streamArray.filter(x => x != args.slowStreamStreamModel)).desc(x => x.speedRank)[0] || firstStreamUrlModel;
                 } catch (error) {
-                    log.error(`unable to find stream url model to compensate the stream. Orignal err: ${(error as Error)?.message}`);
+                    log.error(`Unable to find stream url model to compensate the stream. Orignal err: ${(error as Error)?.message}`);
                 }
             }
 
@@ -162,7 +162,7 @@ class InternalStream {
     }
 
     public pumpV2 = (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
-        log.info(`pumpv2 called with ${start}-${end} range`);
+        log.info(`Pumpv2 called with ${start}-${end} range`);
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
             position = start;
@@ -202,9 +202,9 @@ class InternalStream {
                                 lastKnownStreamInstance?.markSlowStreamHandled(lastKnownStreamInstance.currentPosition + 8000000);
 
                                 if (lastKnownStreamInstance.currentPosition + 8000000 > _instance._size) {
-                                    log.warn(`slow stream detected, but the current stream cannot be bisected as the remaining length is not enough long to hold another 8MB.`);
+                                    log.warn(`Slow stream detected, but the current stream cannot be bisected as the remaining length is not enough long to hold another 8MB.`);
                                 } else {
-                                    log.warn(`slow stream detected, adding another stream to compensate slow stream.`);
+                                    log.warn(`Slow stream detected, adding another stream to compensate slow stream.`);
                                     _instance.streamHandler({ 
                                         position: lastKnownStreamInstance.currentPosition + 8000000, 
                                         compensatingSlowStream: true, slowStreamStreamModel: lastKnownStreamInstance._streamUrlModel 
@@ -221,7 +221,7 @@ class InternalStream {
                     }
                 }
                 rawHttpRequest.destroyed ?
-                    log.info('request was destroyed') :
+                    log.info('Request destroyed') :
                     log.info(`Stream pumpV2 finished with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
             } finally {
                 stimer.Clear();
@@ -236,7 +236,7 @@ class InternalStream {
     }
 
     private throwIfNoStreamUrlPresent = () => {
-        if (this._streamArray.length == 0) throw new Error(`there are no streamable url available to stream`);
+        if (this._streamArray.length == 0) throw new Error(`There are no streamable url available to stream`);
     }
 
 }
@@ -290,7 +290,7 @@ export const clearBuffers = () => {
     if (cleanupItems > 0) {
         buffersToClean.forEach(x => x.bufferCollection.clearBuffers(x.bufferIds));
         const ftime = performance.now();
-        log.info(`cleanup ${cleanupItems} items to ${prettyBytes(cleanupSize)} in ${ftime - stime} ms`);
+        log.info(`Cleanup ${cleanupItems} items to ${prettyBytes(cleanupSize)} in ${ftime - stime} ms`);
     }
 }
 

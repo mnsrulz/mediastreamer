@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import { pEvent } from 'p-event';
 import { ManualResetEvent } from './utils/ManualResetEvent.js';
 import { log } from './app.js';
-import { parseContentLengthFromRangeHeader } from './utils/utils.js';
+import { parseByteRangeFromResponseRangeHeader, parseContentLengthFromRangeHeader } from './utils/utils.js';
 import config from './config.js';
 import { TypedEventEmitter } from './TypedEventEmitter.js';
 import { StreamUrlModel } from './models/StreamUrlModel.js';
@@ -27,6 +27,11 @@ export const streamerv2 = async (streamUrlModel: StreamUrlModel, bf: VirtualBuff
             const contentLengthHeader = parseInt(response.headers['content-length'] || '0');
             const potentialContentLength = parseContentLengthFromRangeHeader(response.headers['content-range'] || '')
                 || contentLengthHeader;
+            
+            if (initialPosition > 0) {  //ensure the stream response respected the start position
+                const rangeValues = parseByteRangeFromResponseRangeHeader(response.headers['content-range'] || '');
+                (rangeValues?.start != initialPosition) && rej(new Error(`Range Mismatch : Initial position ${initialPosition} is not in the range of the response.`));
+            }
 
             if (size !== potentialContentLength) {
                 rej(new Error(`Content Length mismatch: Expected/Actual ${size}/${potentialContentLength}`));

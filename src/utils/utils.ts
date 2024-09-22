@@ -31,3 +31,17 @@ export const parseContentLengthFromRangeHeader = (headerValue: string | null): n
         return parseInt(headerValue.split('/').pop() || '0');
     }
 }
+
+export const parseByteRangeFromResponseRangeHeader = (headerValue: string | null): { start: number, end: number, length: number } | undefined => {
+    if (headerValue) {
+        const match = headerValue.match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/);
+        if (match) {
+            return {
+                start: Number(match[1]),
+                end: Number(match[2]),
+                length: Number(match[3])
+            }
+        }
+    }
+}
+

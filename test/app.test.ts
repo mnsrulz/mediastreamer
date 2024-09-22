@@ -1,7 +1,7 @@
 import assert from 'assert/strict';
 import { describe, it } from 'node:test';
 import { VirtualBufferCollection } from '../src/models/VirtualBufferCollection.js';
-import { parseRangeRequest } from '../src/utils/utils.js';
+import { parseRangeRequest, parseContentLengthFromRangeHeader, parseByteRangeFromResponseRangeHeader } from '../src/utils/utils.js';
 
 describe('Buffer collection tests', () => {
     it('buffer collection consolidate buffers test', () => {
@@ -53,4 +53,16 @@ describe('Range header tests', () => {
         assert.equal(rangeRequest?.start, 900);
         assert.equal(rangeRequest?.end, 999);
     });
+
+    it('parseContentLengthFromRangeHeader header test', () => {
+        const contentLen = parseContentLengthFromRangeHeader('bytes 1-10/11501179163');
+        assert.equal(contentLen, 11501179163);
+    })
+
+    it('parseByteRangeFromResponseRangeHeader header test', () => {
+        const range = parseByteRangeFromResponseRangeHeader('bytes 1-10/11501179163');
+        assert.equal(range?.start, 1);
+        assert.equal(range?.end, 10);
+        assert.equal(range?.length, 11501179163);
+    })
 })

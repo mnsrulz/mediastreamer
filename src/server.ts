@@ -61,7 +61,7 @@ app.register((route, opts, next) => {
         const range = parseRangeRequest(documentSize, request.headers['range'])
             || { start: 0, end: documentSize - 1 };
 
-        request.log.info(`stream range: ${range.start}-${range.end} requested for imdbId: ${imdbid} having size ${size}`);
+        request.log.info(`Stream range: ${range.start}-${range.end} requested for imdbId: ${imdbid} having size ${size}`);
         if (range) {
             const resp = await streamer({
                 imdbId: imdbid.toLowerCase(),

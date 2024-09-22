@@ -10,7 +10,7 @@
   "scripts": {
     "test": "ava",
     "test:watch": "ava --watch",
-    "test:tsx": "node --watch --loader tsx --test test/*test.ts",
+    "test:tsx": "node --watch --import tsx --test test/*test.ts",
     "build": "node build.mjs",
     "start:esmwatch": "node --watch .",
     "start:frontail": "node . | frontail --ui-highlight --ui-highlight-preset frontrailpresets\\npmlog.json --disable-usage-stats -p 9002 -n 80 -",

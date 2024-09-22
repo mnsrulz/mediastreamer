@@ -1,6 +1,13 @@
-# mediastreamer
+# MediaStreamer
 
-A simple nodejs api capable of streaming content from url(s) in effective manner using in memory cache to make it rewindable streams.
+A simple Node.js API capable of streaming content from URLs in an effective manner using in-memory cache to make it rewindable streams.
+
+# Features
+- Streams content from URLs with efficient caching for rewindable streams
+- Supports range requests for partial content streaming
+- Uses in-memory cache for fast access to cached content
+- Configurable environment variables for customization
+- Docker support for easy deployment
 
 ## Environment vars
 Server supports the env file to load env vars. Simply create an .env file in the root directory. Following options are available
@@ -39,4 +46,14 @@ sequenceDiagram
         ThirdPartyStream-->>API: binary stream
     end
     API-->>Client: RETURN buffer content
+```
+
+# Tests
+```
+npm run test:tsx
+```
+
+# Docker
+```
+docker pull ghcr.io/mnsrulz/mediastreamer:latest
 ```
