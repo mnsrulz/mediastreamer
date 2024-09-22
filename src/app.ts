@@ -8,18 +8,22 @@ const ts = [{
     options: {},
     level: 'info'
 }];
-if(token) {
+if (token) {
     ts.push({
         target: "@logtail/pino",
         options: { sourceToken: token },
         level: 'info'
     })
 }
-export const app = Fastify({ logger: {
-    transport: {
-        //target: 'pino-pretty'
-        //target: '@fastify/one-line-logger'
-        targets: ts
-    }
-} });
+export const app = Fastify({
+    logger: {
+        transport: {
+            //target: 'pino-pretty'
+            //target: '@fastify/one-line-logger'
+            targets: ts
+        },
+
+    }, 
+    disableRequestLogging: true
+});
 export const log = app.log;
