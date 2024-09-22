@@ -5,6 +5,7 @@ import { app } from './app.js';
 import { streamer, currentStats, clearBuffers } from './streamer.js';
 import { parseRangeRequest } from './utils/utils.js';
 import path from 'path';
+import prettyBytes from 'pretty-bytes';
 
 app.addContentTypeParser('*', { parseAs: 'buffer' }, function (request, payload, done) { done(null); });
 
@@ -19,10 +20,10 @@ app.register((route, opts, next) => {
     });
 
     route.get('/', async (request, reply) => {
-        if(!request.routerPath.endsWith('/')) return reply.redirect(`${request.routerPath}/`);
+        if (!request.routerPath.endsWith('/')) return reply.redirect(`${request.routerPath}/`);
         return reply.sendFile('stats.htm', path.join(__dirname, '/views/'));
     });
-    
+
     route.get('/cleanup', async (request, reply) => {
         clearBuffers();
         reply.type('application/json').code(200)
@@ -61,7 +62,7 @@ app.register((route, opts, next) => {
         const range = parseRangeRequest(documentSize, request.headers['range'])
             || { start: 0, end: documentSize - 1 };
 
-        request.log.info(`Stream range: ${range.start}-${range.end} requested for imdbId: ${imdbid} having size ${size}`);
+        request.log.info(`Range ${prettyBytes(range.end - range.start)} from ${prettyBytes(range.start)} requested for imdbId: ${imdbid} having size ${prettyBytes(documentSize)}`);
         if (range) {
             const resp = await streamer({
                 imdbId: imdbid.toLowerCase(),

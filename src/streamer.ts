@@ -64,7 +64,7 @@ class InternalStream {
     }
     performRefresh = async () => {
         try {
-            log.trace(`Refreshing streams for imdb '${this._imdbId}' having size '${this._size}'`);
+            log.trace(`Refreshing streams for imdb '${this._imdbId}' having size '${prettyBytes(this._size)}'`);
             this._isRefreshingStreams = true;
             const tempstreams = await acquireStreams(this._imdbId, this._size);
             this.mergeStream(tempstreams);
@@ -101,7 +101,7 @@ class InternalStream {
     public static create = async (req: StreamerRequest) => {
         let existingStream = globalStreams.find(s => s._imdbId === req.imdbId && s._size === req.size);
         if (existingStream) {
-            log.info(`Stream request already satisfied for ${req.imdbId} with size ${req.size}. So reusing it.`);
+            log.info(`Reusing existing stream for '${req.imdbId}' with size ${prettyBytes(req.size)}.`);
             await existingStream.requestRefresh();  //silent refresh of the streams
         } else {
             const tempstreams = await acquireStreams(req.imdbId, req.size);
@@ -137,7 +137,7 @@ class InternalStream {
             exisitngStreams[0].resume();
         }
         else {
-            log.info(`${this._imdbId} - Constructing a new stream with args: ${JSON.stringify(args)} for size: ${this._size}`);
+            log.info(`${this._imdbId} - Constructing a new stream with args: ${JSON.stringify(args)} for size: ${prettyBytes(this._size)}`);
             const { _em, _st, _size, _bufferArray, _streamArray, removeGotStreamInstance } = this;
             let firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
             if (args.compensatingSlowStream) {
@@ -162,7 +162,7 @@ class InternalStream {
     }
 
     public pumpV2 = (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
-        log.info(`Pumpv2 called with ${start}-${end} range`);
+        log.info(`Requesting ${prettyBytes(end - start)} from ${prettyBytes(start)} for '${this._imdbId}' having size '${prettyBytes(this._size)}'`);
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
             position = start;
@@ -205,9 +205,9 @@ class InternalStream {
                                     log.warn(`Slow stream detected, but the current stream cannot be bisected as the remaining length is not enough long to hold another 8MB.`);
                                 } else {
                                     log.warn(`Slow stream detected, adding another stream to compensate slow stream.`);
-                                    _instance.streamHandler({ 
-                                        position: lastKnownStreamInstance.currentPosition + 8000000, 
-                                        compensatingSlowStream: true, slowStreamStreamModel: lastKnownStreamInstance._streamUrlModel 
+                                    _instance.streamHandler({
+                                        position: lastKnownStreamInstance.currentPosition + 8000000,
+                                        compensatingSlowStream: true, slowStreamStreamModel: lastKnownStreamInstance._streamUrlModel
                                     });
                                 }
                             }
@@ -222,7 +222,7 @@ class InternalStream {
                 }
                 rawHttpRequest.destroyed ?
                     log.info('Request destroyed') :
-                    log.info(`Stream pumpV2 finished with bytesConsumed=${bytesConsumed} and bytesRequested=${bytesRequested}`);
+                    log.info(`Stream transmitted ${prettyBytes(bytesConsumed)} for '${_instance._imdbId}' having size '${prettyBytes(_instance._size)}'`);
             } finally {
                 stimer.Clear();
             }
