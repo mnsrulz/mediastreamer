@@ -1,7 +1,6 @@
 import { Readable } from 'node:stream';
 import * as http from 'http'
 import prettyBytes from 'pretty-bytes';
-import { ManualResetEvent } from './utils/ManualResetEvent.js';
 import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
 import { getLinks, requestRefresh } from './apiClient.js';
 import { sort } from 'fast-sort';
@@ -10,7 +9,7 @@ import { delay } from './utils/utils.js';
 import config from './config.js';
 import { TypedEventEmitter } from './TypedEventEmitter.js';
 import { StreamSpeedTester } from './utils/streamSpeedTester.js';
-import { streamerv2, ResumableStream } from './ResumableStream.js';
+import { streamerv2, ResumableStreamCollection } from './ResumableStream.js';
 import { StreamUrlModel } from './models/StreamUrlModel.js';
 
 const globalStreams: InternalStream[] = [];
@@ -44,7 +43,7 @@ class InternalStream {
     private _refreshRequested = false;
     _bufferArray = new VirtualBufferCollection();
     private _em = new TypedEventEmitter<LocalEventTypes>();
-    private _st: ResumableStream[] = [];
+    private _st: ResumableStreamCollection = new ResumableStreamCollection();
     _imdbId: string;
     _streamArray: StreamUrlModel[];
     _size: number;
@@ -81,12 +80,10 @@ class InternalStream {
         this._streamArray = [...streams, ...this._streamArray.filter(x => !docIds.includes(x.docId))];
 
         const fastestStream = sort(this._streamArray).desc(x => x.speedRank)[0];
+        this._st.updateSpeedRanks(docIdSpeedRankMap);
 
-        this._st.forEach(x => {
-            x._streamUrlModel.speedRank = docIdSpeedRankMap.get(x._streamUrlModel.docId) || x._streamUrlModel.speedRank;
-        })
 
-        for (const currentgotstream of this._st) {
+        for (const currentgotstream of this._st.Items) {
             if (currentgotstream._streamUrlModel.speedRank < fastestStream.speedRank) {
                 log.info(`Found a new stream '${new URL(fastestStream.streamUrl).hostname}' with rank ${fastestStream.speedRank} better than the existing '${new URL(currentgotstream._streamUrlModel.streamUrl).hostname}' ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
                 currentgotstream.drainIt(); //drain this stream and let other one consume
@@ -121,24 +118,11 @@ class InternalStream {
         this._streamArray = streams;
     }
 
-    private removeGotStreamInstance = (streamInstance: ResumableStream) => {
-        log.info(`Removing the gostream with stats: ${JSON.stringify(streamInstance.stats)}`)
-        this._st = this._st.filter(item => item != streamInstance);
-    }
-
     private streamHandler = async (args: InternalStreamRequestStreamEventArgs) => {
-        //log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);
-        const exisitngStreams = this._st.filter(x => x.CanResolve(args.position));
-        if (exisitngStreams.length > 0) {
-            //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
-            if (exisitngStreams.length > 1) {
-                log.warn(`Multiple streams found which can satisfy position:${args.position}. Going with the first one.`);
-            }
-            exisitngStreams[0].resume();
-        }
-        else {
+        //log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);        
+        if (!this._st.tryResumingStreamFromPosition(args.position)) {
             log.info(`${this._imdbId} - Constructing a new stream with args: ${JSON.stringify(args)} for size: ${prettyBytes(this._size)}`);
-            const { _em, _st, _size, _bufferArray, _streamArray, removeGotStreamInstance } = this;
+            const { _em, _st, _size, _bufferArray, _streamArray } = this;
             let firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
             if (args.compensatingSlowStream) {
                 try {
@@ -150,9 +134,9 @@ class InternalStream {
 
             try {
                 const newStream = await streamerv2(firstStreamUrlModel, _bufferArray, _size, args.position);
-                _st.push(newStream);
+                _st.addStream(newStream);
                 newStream.startStreaming()
-                    .finally(() => removeGotStreamInstance(newStream));
+                    .finally(() => _st.removeStream(newStream));
             } catch (error) {
                 log.error((error as Error)?.message)
                 this._streamArray = this._streamArray.filter(x => x != firstStreamUrlModel);
@@ -193,7 +177,7 @@ class InternalStream {
                         if (lastKnownStreamInstance && lastKnownStreamInstance.CanResolve(position)) {
                             lastKnownStreamInstance.markLastReaderPosition(position);
                         } else {
-                            lastKnownStreamInstance = _instance._st.find(x => x.CanResolve(position));
+                            lastKnownStreamInstance = _instance._st.Items.find(x => x.CanResolve(position));
                             lastKnownStreamInstance?.markLastReaderPosition(position);
                         }
 
@@ -232,7 +216,7 @@ class InternalStream {
     }
 
     public get stats() {
-        return this._st.map(x => x.stats);
+        return this._st.Items.map(x => x.stats);
     }
 
     private throwIfNoStreamUrlPresent = () => {

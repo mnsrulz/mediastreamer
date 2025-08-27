@@ -130,6 +130,7 @@ export class ResumableStream {
                     log.info(`stream read ahead exhausted. Pausing for a while`);
                     this._mre.reset();
                     await this._mre.wait();
+                    log.info(`unpausing the stream`);
                     this._readAheadExceeded = false;
                 }
             }
@@ -229,4 +230,48 @@ export class ResumableStream {
             slowStreamHandled: _slowStreamHandled
         };
     }
+}
+
+export class ResumableStreamCollection {
+    public tryResumingStreamFromPosition(position: number) {
+        const exisitngStreams = this._st.filter(x => x.CanResolve(position));
+        if (exisitngStreams.length > 0) {
+            //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
+            if (exisitngStreams.length > 1) {
+                log.warn(`Multiple streams found which can satisfy position:${position}. Going with the first one.`);
+            }
+            exisitngStreams[0].resume();
+            return true;
+        }
+        return false;
+    }
+
+    private _st: ResumableStream[];
+    public get length(): number {
+        return this._st.length;
+    }
+
+    constructor() {
+        this._st = [];
+    }
+
+    public addStream(stream: ResumableStream) {
+        this._st.push(stream);
+    }
+
+    public removeStream(stream: ResumableStream) {
+        log.info(`Removing the gostream with stats: ${JSON.stringify(stream.stats)}`)
+        this._st = this._st.filter(s => s !== stream);
+    }
+
+    public updateSpeedRanks(docIdSpeedRankMap: Map<string, number>) {
+        this._st.forEach(x => {
+            x._streamUrlModel.speedRank = docIdSpeedRankMap.get(x._streamUrlModel.docId) || x._streamUrlModel.speedRank;
+        })
+    }
+
+    public get Items(): ResumableStream[] {
+        return this._st;
+    }
+
 }
