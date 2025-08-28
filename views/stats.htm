@@ -22,27 +22,179 @@
         integrity="sha512-8bHTC73gkZ7rZ7vpqUQThUDhqcNFyYi2xgDgPDHc+GXVGHXq+xPjynxIopALmOPqzo9JZj0k6OqqewdGO3EsrQ=="
         crossorigin="anonymous" />
 
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
 </head>
 
 <body>
+    <style>
+        #app-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255,255,255,0.95);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+        }
+    </style>
+    <div id="app-loader">
+        <div class="ui active dimmer">
+            <div class="ui large text loader">Loading app…</div>
+        </div>
+    </div>
     <script type="module">
         import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
         import { vm } from "./public/app.js";
-        createApp(vm).mount('#app');
+        const app = createApp(vm);
+        app.mount('#app');
+        document.getElementById('app-loader').style.display = 'none';
     </script>
     <div id="app" v-cloak style="margin-top: 50px;">
         <div class="ui grid container">
             <div class="four wide column">
-                <div class="ui vertical menu fluid tabular ">
-                    <a v-for="item in items" class="item" :class="{ active: item.imdbId === selectedImdbId }"
-                        v-on:click="setSelectedImdbId(item.imdbId)">
-                        {{item.imdbId}}
-                    </a>
+                <div class="ui segment">
+                    <div class="ui link list fluid">
+                        <template v-if="items && items.length > 0">
+                            <template v-for="item in items">
+                                <div v-if="item.imdbId === selectedImdbId && item.size === selectedItemSize"
+                                    class="item active">
+                                    <div class="ui grid">
+                                        <div class="twelve wide column">
+                                            <strong>{{ item.imdbId }}</strong>
+                                            <span class="ui mini label">{{ getSizeId(item.size) }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <a v-else class="item" @click="setSelectedImdbId(item.imdbId, item.size)">
+                                    <div class="ui grid">
+                                        <div class="twelve wide column">
+                                            <strong>{{ item.imdbId }}</strong>
+                                            <span class="ui mini label">{{ getSizeId(item.size) }}</span>
+                                        </div>
+                                    </div>
+                                </a>
+                            </template>
+                        </template>
+                        <template v-else>
+                            <div class="item">zero items found</div>
+                        </template>
+                    </div>
                 </div>
             </div>
             <div class="twelve wide stretched column">
                 <div class="ui segment">
+                    <button class="ui primary button" style="margin-bottom: 1em;" @click="openRangeDialog"
+                        :disabled="!selectedImdbId">
+                        Request Range
+                    </button>
+                    <!-- Modal Dialog for Range Input with Dimmer -->
+                    <div v-if="showRangeDialog">
+                        <div class="ui page modals dimmer transition visible active" style="z-index: 1000;"></div>
+                        <div class="ui tiny modal active visible" style="display: block; z-index: 1100;">
+                            <div class="header">Request Range for {{ selectedImdbId }}</div>
+                            <div class="content">
+                                <form class="ui form" @submit.prevent="submit">
+                                    <div class="field">
+                                        <label>Start</label>
+                                        <input type="number" v-model.number="rangeStart" min="0"
+                                            :max="selectedItem?.size" required />
+                                    </div>
+                                    <div class="field">
+                                        <label>End</label>
+                                        <input type="number" v-model.number="rangeEnd" :min="rangeStart"
+                                            :max="selectedItem?.size" required />
+                                    </div>
+                                    <div class="actions">
+                                        <button type="submit" class="ui positive button">Submit</button>
+                                        <button type="button" class="ui button"
+                                            @click="closeRangeDialog">Cancel</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="selectedItem" class="ui card" style="margin-bottom: 1em;">
+                        <div class="content">
+                            <div class="header">{{ selectedItem.imdbId }}</div>
+                            <div class="meta">Size: <strong>{{ selectedItem.sizeHuman }}</strong> ({{
+                                selectedItem.size.toLocaleString() }} bytes)</div>
+                            <div class="description">
+                                <div class="ui list">
+                                    <div class="item"><strong>Number of Streams:</strong> {{
+                                        selectedItem.numberOfStreams }}</div>
+                                    <div class="item"><strong>Buffer Array Length:</strong> {{
+                                        selectedItem.bufferArrayLength }}</div>
+                                    <div class="item"><strong>Buffer Array Size:</strong> {{
+                                        selectedItem.bufferArraySize }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div v-html="plotChart"></div>
+
+                    <div v-if="selectedItem && selectedItem.streamStats && selectedItem.streamStats.length > 0"
+                        class="ui segment">
+                        <h4 class="ui header">Streams</h4>
+                        <div class="ui relaxed divided list">
+                            <div class="item" v-for="(stream, idx) in selectedItem.streamStats" :key="idx">
+                                <div class="ui grid">
+                                    <div class="eight wide column">
+                                        <div><strong>Start Position:</strong> {{ stream.startPosition }}</div>
+                                        <div><strong>Current Position:</strong> {{ stream.currentPosition }}</div>
+                                        <div><strong>Last Reader Position:</strong> {{ stream.lastReaderPosition }}
+                                        </div>
+                                        <div><strong>Last Used:</strong> <span :title="stream.lastUsed">{{ new
+                                                Date(stream.lastUsed).toLocaleString() }}</span></div>
+                                    </div>
+                                    <div class="eight wide column">
+                                        <div>
+                                            <strong>Status:</strong>
+                                            <span :class="['ui label', stream.isGoodStream ? 'green' : 'red']">
+                                                {{ stream.isGoodStream ? 'Good' : 'Bad' }}
+                                            </span>
+                                            <span class="ui label"
+                                                :class="stream.hasHealthyBuffer ? 'green' : 'orange'">
+                                                Buffer: {{ stream.hasHealthyBuffer ? 'Healthy' : 'Low' }}
+                                            </span>
+                                            <span class="ui label" :class="stream.drainRequested ? 'red' : 'blue'">
+                                                Drain: {{ stream.drainRequested ? 'Requested' : 'Active' }}
+                                            </span>
+                                            <span class="ui label"
+                                                :class="stream.readAheadExceeded ? 'orange' : 'grey'">
+                                                Read Ahead: {{ stream.readAheadExceeded ? 'Exceeded' : 'OK' }}
+                                            </span>
+                                            <span class="ui label"
+                                                :class="stream.slowStreamHandled ? 'yellow' : 'grey'">
+                                                Slow: {{ stream.slowStreamHandled ? 'Handled' : 'Normal' }}
+                                            </span>
+                                        </div>
+                                        <div style="margin-top: 0.5em;">
+                                            <strong>Speed:</strong>
+                                            <span class="ui mini label">Current: {{
+                                                Math.round(stream.speedStats.currentSpeedBps) }} Bps</span>
+                                            <span class="ui mini label">Avg: {{
+                                                Math.round(stream.speedStats.cumulativeSpeedBps) }} Bps</span>
+                                        </div>
+                                        <div v-if="stream.lastReadAheadExceededTime">
+                                            <small>Last Read Ahead Exceeded: <span
+                                                    :title="stream.lastReadAheadExceededTime">{{ new
+                                                    Date(stream.lastReadAheadExceededTime).toLocaleString()
+                                                    }}</span></small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="selectedItem">
+                        <div class="ui message">No streams found for this item.</div>
+                    </div>
                 </div>
             </div>
         </div>

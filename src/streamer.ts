@@ -131,9 +131,6 @@ class InternalStream {
                 _st.addStream(newStream);
                 newStream.startStreaming()
                     .finally(() => _st.removeStream(newStream));
-                log.info('Waiting for the first chunk stream to be available');
-                //await newStream.waitForFirstChunk(3000);  //mysteriously awaiting the signal is NOT working here. ????
-                log.info(`Successfully created new stream for ${this._imdbId}`);
             } catch (error) {
                 log.error((error as Error)?.message)
                 _streamSources.remove(fastestStreamSource);
@@ -156,7 +153,7 @@ class InternalStream {
                     break;
                 }
 
-                const __data = _instance._bufferArray.tryFetch(position, bytesRequested, bytesConsumed);                
+                const __data = _instance._bufferArray.tryFetch(position, bytesRequested, bytesConsumed);
                 if (__data) {
                     /*
                     try to detect speed here and add more instances of stream downloader with advance positions
@@ -195,13 +192,12 @@ class InternalStream {
                 } else {
                     _instance.throwIfNoStreamUrlPresent();
                     await _instance.ensureBufferCoverage({ position });
-                    await delay(300);   //wait for 300ms    --kind of hackyy
+                    await _instance._bufferArray.waitForNewData(3000);
                 }
             }
             rawHttpRequest.destroyed ?
                 log.info('Ooops! Seems like the underlying http request has been destroyed. Aborting now!!!') :
                 log.info(`Stream transmitted ${prettyBytes(bytesConsumed)} for '${_instance._imdbId}' having size '${prettyBytes(_instance._size)}'`);
-
         }
 
         return Readable.from(_startStreamer());

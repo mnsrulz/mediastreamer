@@ -1,10 +1,21 @@
 import prettyBytes from 'pretty-bytes';
 import config from '../config.js';
 import { VirtualBuffer } from './VirtualBuffer.js';
+import { pEvent } from 'p-event';
+import { EventEmitter } from 'streamspeed';
 
 export class VirtualBufferCollection {
+
+    /**Wait for new data event.*/
+    async waitForNewData(timeout: number) {
+        await pEvent(this._emitter, 'newdata', {
+            timeout: timeout || 3000
+        });
+    }
+
     private _bufferArray: VirtualBuffer[] = [];
     private _maxBufferSize;
+    private _emitter = new EventEmitter();
     constructor(maxBufferSize = config.maxChunkSizeMB * 1024 * 1024) {
         this._maxBufferSize = maxBufferSize;
     }
@@ -42,6 +53,7 @@ export class VirtualBufferCollection {
         } else {
             this._bufferArray.push(new VirtualBuffer(buffer, position, position + buffer.byteLength - 1));
         }
+        this._emitter.emit('newdata');
     };
 
     /** returns the current length of virtual buffer element*/

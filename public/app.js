@@ -1,8 +1,9 @@
 import * as Plot from "https://esm.sh/@observablehq/plot@0.6.13?bundle";
-const apiResponse = await fetch('stats');
-const apiData = await apiResponse.json();
-const fn1 = (imdbId) => {
-    const { bufferRange, size } = apiData.find(x => x.imdbId === imdbId);
+// const apiResponse = await fetch('stats');
+// const apiData = await apiResponse.json();
+const REFRESH_INTERVAL_MS = 1000;
+const fn1 = (imdbId, items) => {
+    const { bufferRange, size } = items.find(x => x.imdbId === imdbId);
     if (!bufferRange || bufferRange.length === 0) return 'No buffer elements to plot chart.';
     const chunkSize = parseInt((size / 300).toFixed(0));   //size comes as 100 MB
     let d = [];
@@ -69,23 +70,77 @@ const fn1 = (imdbId) => {
 
 export const vm = {
     mounted() {
-
+        this.fetchStats();
+        this._interval = setInterval(this.fetchStats, REFRESH_INTERVAL_MS);
+    },
+    unmounted() {
+        clearInterval(this._interval);
     },
     data() {
         return {
-            selectedImdbId: Array.isArray(apiData) && apiData.length>0 && apiData[0].imdbId,
-            items: apiData,
-            hello: 'world'
+            selectedImdbId: null,
+            selectedItemSize: null,
+            items: [],
+            hello: 'world',
+            showRangeDialog: false,
+            rangeStart: 0,
+            rangeEnd: 0
         }
     },
     computed: {
         plotChart() {
-            return fn1(this.selectedImdbId);
+            if (this.selectedImdbId) {
+                return fn1(this.selectedImdbId, this.items);
+            }
+            return '';
+        },
+        selectedItem() {
+            return this.items?.find(x => x.imdbId === this.selectedImdbId && x.size === this.selectedItemSize) || null;
         }
     },
     methods: {
-        setSelectedImdbId: function (imdbId) {
+        setSelectedImdbId: function (imdbId, size) {
             this.selectedImdbId = imdbId;
+            this.selectedItemSize = size;
+        },
+        async fetchStats() {
+            const apiResponse = await fetch('stats');
+            const apiData = await apiResponse.json();
+            this.items = apiData;
+            if (!this.selectedImdbId && apiData.length > 0) {
+                this.selectedImdbId = apiData[0].imdbId;
+                this.selectedItemSize = apiData[0].size;
+            } else if (apiData.length === 0) {
+                this.selectedImdbId = null;
+                this.selectedItemSize = null;
+            }
+        },
+        requestRange() {
+
+        },
+        openRangeDialog() {
+            this.showRangeDialog = true;
+        },
+        closeRangeDialog() {
+            this.showRangeDialog = false;
+            this.rangeStart = 0;
+            this.rangeEnd = 0;
+        },
+        async submit() {
+            await fetch(`stream/${this.selectedImdbId}/${this.getSizeId(this.selectedItem.size)}`, {
+                headers: {
+                    Range: `bytes=${this.rangeStart}-${this.rangeEnd}`
+                }
+            }).then(() => {
+                toastr.success('Success!')
+            }).catch(() => {
+                toastr.error('Error!')
+            }).finally(() => {
+                this.closeRangeDialog()
+            });
+        },
+        getSizeId(size) {
+            return `z${Number(size).toString(32)}`;
         }
     }
 }
