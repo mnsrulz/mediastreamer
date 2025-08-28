@@ -55,6 +55,7 @@ export class ResumableStream {
     private _drainRequested = false;
     private _gotStream: Request;
     private _readAheadExceeded = false;
+    private _lastReadAheadExceededTime: Date | undefined;
     private _mre = ManualResetEvent.createNew();
     private _firstChunkMre = ManualResetEvent.createNew();
     private _bf: VirtualBufferCollection;
@@ -65,6 +66,7 @@ export class ResumableStream {
     private _slowStreamHandled = false;   //use this in conjuction with speed_bps and buffer health
     private _bytesDownloaded = 0;
     private _forceEndPosition = Number.MAX_VALUE;
+    private _speedTester = new StreamSpeedTester();
     //bus = new EventEmitter();
     _streamUrlModel: StreamSource;
 
@@ -114,13 +116,13 @@ export class ResumableStream {
     public startStreaming = async () => {
         try {
             log.info(`yay! we found a good stream... traversing it..`);
-            const stimer = new StreamSpeedTester();
-            stimer.startActivePeriod();
+
+            this._speedTester.startActivePeriod();
 
             for await (const chunk of this._gotStream) {
                 this._firstChunkMre.set();  //this signals that the first chunk has been received. Might be good if there's a way to do it only once. For now we are good.
                 if (this._drainRequested) break;
-                stimer.addData(chunk.length);
+                this._speedTester.addData(chunk.length);
 
                 const _buf = (chunk as Buffer);
                 this._bf.push(_buf, this._currentPosition);      //_self.emit('data', { buffer: _buf, position: _self.currentPosition });
@@ -139,14 +141,16 @@ export class ResumableStream {
 
                 while (!this._drainRequested && this._currentPosition > this._lastReaderPosition + (config.readAheadSizeMB * 1024 * 1024)) { //advance bytes
                     this._readAheadExceeded = true;
+                    this._lastReadAheadExceededTime = new Date();
                     //await pEvent(this.bus, 'unlocked');    //do we need a bus?
                     log.info(`stream read ahead exhausted. Pausing for a while`);
                     this._mre.reset();
-                    stimer.pauseActivePeriod();
+                    this._speedTester.pauseActivePeriod();
                     await this._mre.wait();
                     log.info(`unpausing the stream`);
                     this._readAheadExceeded = false;
-                    stimer.startActivePeriod();
+                    this._lastReadAheadExceededTime = undefined;
+                    this._speedTester.startActivePeriod();
                 }
             }
         } catch (error) {
@@ -168,7 +172,7 @@ export class ResumableStream {
         this._mre.set();
     };
 
-    
+
     /**this is helpful to advance the position of the stream if it's in read exhaust mode*/
     public markLastReaderPosition = (position: number) => {
         if (this._lastReaderPosition < position) {
@@ -233,7 +237,7 @@ export class ResumableStream {
 
 
     public get stats() {
-        const { lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _slowStreamHandled } = this;
+        const { lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester, _slowStreamHandled, _lastReadAheadExceededTime } = this;
         return {
             startPosition,
             lastUsed,
@@ -241,9 +245,14 @@ export class ResumableStream {
             lastReaderPosition: _lastReaderPosition,
             drainRequested: _drainRequested,
             readAheadExceeded: _readAheadExceeded,
+            lastReadAheadExceededTime: _lastReadAheadExceededTime,
             readAheadBufferSnapshot: _bufferSnapshot,
             isGoodStream, hasHealthyBuffer,
-            slowStreamHandled: _slowStreamHandled
+            slowStreamHandled: _slowStreamHandled,
+            speedStats: {
+                cumulativeSpeedBps: _speedTester.cumulativeSpeedBps,
+                currentSpeedBps: _speedTester.currentSpeedBps
+            }
         };
     }
 }
