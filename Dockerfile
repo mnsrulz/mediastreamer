@@ -14,6 +14,9 @@ COPY ./public ./public
 COPY ./frontrailpresets ./frontrailpresets
 COPY package*.json ./
 
+
+ARG BUILD_TIME
+ENV BUILD_TIME=$BUILD_TIME
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000

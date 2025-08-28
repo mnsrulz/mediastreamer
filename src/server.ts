@@ -86,6 +86,12 @@ app.register((route, opts, next) => {
 
 
 app.listen({ port: config.DEFAULT_SERVER_PORT, host: '0.0.0.0' }, (err) => {
+    const buildTime = process.env.BUILD_TIME;
+    if (buildTime) {
+        // eslint-disable-next-line no-console
+        app.log.info('Docker image build time:', buildTime);
+    }
+
     if (err) {
         app.log.fatal(err.message);
         throw err
