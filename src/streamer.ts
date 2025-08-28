@@ -132,7 +132,7 @@ class InternalStream {
                 newStream.startStreaming()
                     .finally(() => _st.removeStream(newStream));
                 log.info('Waiting for the first chunk stream to be available');
-                //await newStream.waitForFirstChunk(3000);
+                //await newStream.waitForFirstChunk(3000);  //mysteriously awaiting the signal is NOT working here. ????
                 log.info(`Successfully created new stream for ${this._imdbId}`);
             } catch (error) {
                 log.error((error as Error)?.message)

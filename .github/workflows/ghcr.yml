@@ -50,3 +50,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BUILD_TIME=${{ env.BUILD_TIME }}
+            GIT_SHA=${{ github.sha }}

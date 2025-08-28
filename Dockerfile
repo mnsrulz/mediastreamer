@@ -16,7 +16,10 @@ COPY package*.json ./
 
 
 ARG BUILD_TIME
+ARG GIT_SHA
+
 ENV BUILD_TIME=$BUILD_TIME
+ENV GIT_SHA=$GIT_SHA
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000

@@ -86,11 +86,8 @@ app.register((route, opts, next) => {
 
 
 app.listen({ port: config.DEFAULT_SERVER_PORT, host: '0.0.0.0' }, (err) => {
-    const buildTime = process.env.BUILD_TIME;
-    if (buildTime) {
-        // eslint-disable-next-line no-console
-        app.log.info('Docker image build time:', buildTime);
-    }
+    app.log.info(`App build time: ${process.env.BUILD_TIME}`);
+    app.log.info(`Git commit SHA: ${process.env.GIT_SHA}`);
 
     if (err) {
         app.log.fatal(err.message);
