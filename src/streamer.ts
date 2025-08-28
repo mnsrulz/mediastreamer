@@ -8,9 +8,8 @@ import { log } from './app.js';
 import { delay } from './utils/utils.js';
 import config from './config.js';
 import { TypedEventEmitter } from './TypedEventEmitter.js';
-import { StreamSpeedTester } from './utils/streamSpeedTester.js';
-import { streamerv2, ResumableStreamCollection } from './ResumableStream.js';
-import { StreamUrlModel } from './models/StreamUrlModel.js';
+import { createResumableStream, ResumableStreamCollection } from './ResumableStream.js';
+import { StreamSource, StreamSourceCollection } from './models/StreamUrlModel.js';
 
 const globalStreams: InternalStream[] = [];
 
@@ -18,13 +17,19 @@ const acquireStreams = async (imdbId: string, size: number) => {
     const links = await getLinks(imdbId, size);
     if (links.length === 0) throw new Error(`No valid stream found for imdbId: ${imdbId} with size: ${size}`);
     const mappedStreams = links
-        .map(x => { return { streamUrl: x.playableLink, headers: x.headers, docId: x.id, speedRank: x.speedRank, status: 'HEALTHY' } as StreamUrlModel });
+        .map(x => { return { streamUrl: x.playableLink, headers: x.headers, docId: x.id, speedRank: x.speedRank, status: 'HEALTHY' } as StreamSource });
     log.trace(`Found ${mappedStreams.length} healthy streams for imdbId: '${imdbId}' with size: '${size}'`)
     return mappedStreams;
 }
 
 
-interface InternalStreamRequestStreamEventArgs { position: number, compensatingSlowStream?: boolean, slowStreamStreamModel?: StreamUrlModel }
+//interface InternalStreamRequestStreamEventArgs { position: number, compensatingSlowStream?: boolean, slowStreamStreamModel?: StreamSource }
+type InternalStreamRequestStreamEventArgs = {
+    position: number;
+} & (
+        | { compensatingSlowStream: true; slowStreamStreamModel: StreamSource }
+        | { compensatingSlowStream?: false; slowStreamStreamModel?: undefined }
+    );
 interface InternalStreamResponseStreamEventArgs { position: number, isSuccessful: boolean }
 
 /*
@@ -43,14 +48,14 @@ class InternalStream {
     private _refreshRequested = false;
     _bufferArray = new VirtualBufferCollection();
     private _em = new TypedEventEmitter<LocalEventTypes>();
-    private _st: ResumableStreamCollection = new ResumableStreamCollection();
+    private _resumableStreams: ResumableStreamCollection = new ResumableStreamCollection();
     _imdbId: string;
-    _streamArray: StreamUrlModel[];
+    _streamSources: StreamSourceCollection;
     _size: number;
     private _isRefreshingStreams = false;
     private _refreshTimer: NodeJS.Timer | null = null;
     async requestRefresh() {
-        if (this._streamArray.length === 0) {
+        if (this._streamSources.isEmpty()) {
             if (!this._isRefreshingStreams) {
                 this.performRefresh();
                 await delay(3000);  //let's wait for 3seconds when the stream array is empty as it might be refreshing...
@@ -73,17 +78,13 @@ class InternalStream {
         this._isRefreshingStreams = false;
         this._refreshRequested = false;
     }
-    mergeStream(streams: StreamUrlModel[]) {
-        const docIds = streams.map(x => x.docId);
+    mergeStream(streams: StreamSource[]) {
         const docIdSpeedRankMap = new Map(streams.map(x => { return [x.docId, x.speedRank] }));//streams.map(x => x.docId);
+        this._streamSources.merge(streams);
+        const fastestStream = this._streamSources.fastest();
+        this._resumableStreams.updateSpeedRanks(docIdSpeedRankMap);
 
-        this._streamArray = [...streams, ...this._streamArray.filter(x => !docIds.includes(x.docId))];
-
-        const fastestStream = sort(this._streamArray).desc(x => x.speedRank)[0];
-        this._st.updateSpeedRanks(docIdSpeedRankMap);
-
-
-        for (const currentgotstream of this._st.Items) {
+        for (const currentgotstream of this._resumableStreams.Items) {
             if (currentgotstream._streamUrlModel.speedRank < fastestStream.speedRank) {
                 log.info(`Found a new stream '${new URL(fastestStream.streamUrl).hostname}' with rank ${fastestStream.speedRank} better than the existing '${new URL(currentgotstream._streamUrlModel.streamUrl).hostname}' ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
                 currentgotstream.drainIt(); //drain this stream and let other one consume
@@ -109,118 +110,107 @@ class InternalStream {
     }
 
     public get MyGotStreamCount() {
-        return this._st.length;
+        return this._resumableStreams.length;
     }
 
-    constructor(imdbId: string, size: number, streams: StreamUrlModel[]) {
+    constructor(imdbId: string, size: number, streams: StreamSource[]) {
         this._imdbId = imdbId;
         this._size = size;
-        this._streamArray = streams;
+        this._streamSources = new StreamSourceCollection(streams);
     }
 
-    private streamHandler = async (args: InternalStreamRequestStreamEventArgs) => {
+    private ensureBufferCoverage = async (args: InternalStreamRequestStreamEventArgs) => {
         //log.info(`stream handler event received with start position ${JSON.stringify(args.position)} and we have ${this._st?.length} streams avaialble`);        
-        if (!this._st.tryResumingStreamFromPosition(args.position)) {
+        if (!this._resumableStreams.tryResumingStreamFromPosition(args.position)) {
             log.info(`${this._imdbId} - Constructing a new stream with args: ${JSON.stringify(args)} for size: ${prettyBytes(this._size)}`);
-            const { _em, _st, _size, _bufferArray, _streamArray } = this;
-            let firstStreamUrlModel = sort(_streamArray).desc(x => x.speedRank)[0];
-            if (args.compensatingSlowStream) {
-                try {
-                    firstStreamUrlModel = sort(_streamArray.filter(x => x != args.slowStreamStreamModel)).desc(x => x.speedRank)[0] || firstStreamUrlModel;
-                } catch (error) {
-                    log.error(`Unable to find stream url model to compensate the stream. Orignal err: ${(error as Error)?.message}`);
-                }
-            }
+            const { _em, _resumableStreams: _st, _size, _bufferArray, _streamSources } = this;
+            let fastestStreamSource = args.compensatingSlowStream ? _streamSources.fastestButNot(args.slowStreamStreamModel) : _streamSources.fastest();
 
             try {
-                const newStream = await streamerv2(firstStreamUrlModel, _bufferArray, _size, args.position);
+                const newStream = await createResumableStream(fastestStreamSource, _bufferArray, _size, args.position);
                 _st.addStream(newStream);
                 newStream.startStreaming()
                     .finally(() => _st.removeStream(newStream));
+                await newStream.waitForFirstChunk();
             } catch (error) {
                 log.error((error as Error)?.message)
-                this._streamArray = this._streamArray.filter(x => x != firstStreamUrlModel);
-                requestRefresh(firstStreamUrlModel.docId);
+                _streamSources.remove(fastestStreamSource);
+                requestRefresh(fastestStreamSource.docId);
             }
         }
     }
 
-    public pumpV2 = (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
+    public requestRange = (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
         log.info(`Requesting ${prettyBytes(end - start)} from ${prettyBytes(start)} for '${this._imdbId}' having size '${prettyBytes(this._size)}'`);
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
             position = start;
         const _instance = this;
         async function* _startStreamer() {
-            const stimer = new StreamSpeedTester();
-            try {
-                let lastKnownStreamInstance = null;
-                while (!rawHttpRequest.destroyed) {
-                    if (bytesConsumed >= bytesRequested) {
-                        log.info(`Guess what! we have reached the conclusion of this stream request.`);
-                        break;
+            let lastKnownStreamInstance = null;
+            while (!rawHttpRequest.destroyed) {
+                if (bytesConsumed >= bytesRequested) {
+                    log.info(`Guess what! we have reached the conclusion of this stream request.`);
+                    break;
+                }
+
+                const __data = _instance._bufferArray.tryFetch(position, bytesRequested, bytesConsumed);                
+                if (__data) {
+                    /*
+                    try to detect speed here and add more instances of stream downloader with advance positions
+                    _instance._em.emit('pumpresume', { position + 8MB });
+ 
+                    we can also look ahead bufferAraay to seek buffer health??
+                    */
+
+                    bytesConsumed = __data.bytesConsumed;
+                    position = __data.position;
+
+                    if (lastKnownStreamInstance && lastKnownStreamInstance.CanResolve(position)) {
+                        lastKnownStreamInstance.markLastReaderPosition(position);
+                    } else {
+                        lastKnownStreamInstance = _instance._resumableStreams.Items.find(x => x.CanResolve(position));
+                        lastKnownStreamInstance?.markLastReaderPosition(position);
                     }
 
-                    const __data = _instance._bufferArray.tryFetch(position, bytesRequested, bytesConsumed);
-                    //we should advance the resume if we knew we are about to reach the buffer end
-                    if (__data) {
-                        /*
-                        try to detect speed here and add more instances of stream downloader with advance positions
-                        _instance._em.emit('pumpresume', { position + 8MB });
-    
-                        we can also look ahead bufferAraay to seek buffer health??
-                        */
-                        stimer.addData(__data.data.byteLength);
+                    if (lastKnownStreamInstance) {
+                        if (!lastKnownStreamInstance.slowStreamHandled && lastKnownStreamInstance.isSlowStream) {
+                            lastKnownStreamInstance?.markSlowStreamHandled(lastKnownStreamInstance.currentPosition + 8000000);
 
-                        bytesConsumed = __data.bytesConsumed;
-                        position = __data.position;
-                        if (lastKnownStreamInstance && lastKnownStreamInstance.CanResolve(position)) {
-                            lastKnownStreamInstance.markLastReaderPosition(position);
-                        } else {
-                            lastKnownStreamInstance = _instance._st.Items.find(x => x.CanResolve(position));
-                            lastKnownStreamInstance?.markLastReaderPosition(position);
-                        }
-
-                        if (lastKnownStreamInstance) {
-                            if (!lastKnownStreamInstance.slowStreamHandled && lastKnownStreamInstance.isSlowStream) {
-                                lastKnownStreamInstance?.markSlowStreamHandled(lastKnownStreamInstance.currentPosition + 8000000);
-
-                                if (lastKnownStreamInstance.currentPosition + 8000000 > _instance._size) {
-                                    log.warn(`Slow stream detected, but the current stream cannot be bisected as the remaining length is not enough long to hold another 8MB.`);
-                                } else {
-                                    log.warn(`Slow stream detected, adding another stream to compensate slow stream.`);
-                                    _instance.streamHandler({
-                                        position: lastKnownStreamInstance.currentPosition + 8000000,
-                                        compensatingSlowStream: true, slowStreamStreamModel: lastKnownStreamInstance._streamUrlModel
-                                    });
-                                }
+                            if (lastKnownStreamInstance.currentPosition + 8000000 > _instance._size) {
+                                log.warn(`Slow stream detected, but the current stream cannot be bisected as the remaining length is not enough long to hold another 8MB.`);
+                            } else {
+                                log.warn(`Slow stream detected, adding another stream to compensate slow stream.`);
+                                _instance.ensureBufferCoverage({
+                                    position: lastKnownStreamInstance.currentPosition + 8000000,
+                                    compensatingSlowStream: true, slowStreamStreamModel: lastKnownStreamInstance._streamUrlModel
+                                });
                             }
                         }
-
-                        yield __data.data;
-                    } else {
-                        _instance.throwIfNoStreamUrlPresent();
-                        await _instance.streamHandler({ position });
-                        await delay(300);   //wait for 300ms    --kind of hackyy
                     }
+
+                    yield __data.data;
+                } else {
+                    _instance.throwIfNoStreamUrlPresent();
+                    await _instance.ensureBufferCoverage({ position });
+                    //await delay(300);   //wait for 300ms    --kind of hackyy
                 }
-                rawHttpRequest.destroyed ?
-                    log.info('Request destroyed') :
-                    log.info(`Stream transmitted ${prettyBytes(bytesConsumed)} for '${_instance._imdbId}' having size '${prettyBytes(_instance._size)}'`);
-            } finally {
-                stimer.Clear();
             }
+            rawHttpRequest.destroyed ?
+                log.info('Ooops! Seems like the underlying http request has been destroyed. Aborting now!!!') :
+                log.info(`Stream transmitted ${prettyBytes(bytesConsumed)} for '${_instance._imdbId}' having size '${prettyBytes(_instance._size)}'`);
+
         }
 
         return Readable.from(_startStreamer());
     }
 
     public get stats() {
-        return this._st.Items.map(x => x.stats);
+        return this._resumableStreams.Items.map(x => x.stats);
     }
 
     private throwIfNoStreamUrlPresent = () => {
-        if (this._streamArray.length == 0) throw new Error(`There are no streamable url available to stream`);
+        if (this._streamSources.isEmpty()) throw new Error(`There are no streamable url available to stream`);
     }
 
 }
@@ -231,7 +221,7 @@ interface StreamerRequest {
 
 export const streamer = async (req: StreamerRequest) => {
     const existingStream = await InternalStream.create(req);
-    return existingStream.pumpV2(req.start, req.end, req.rawHttpMessage);
+    return existingStream.requestRange(req.start, req.end, req.rawHttpMessage);
 }
 
 

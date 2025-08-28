@@ -7,13 +7,14 @@ import { log } from './app.js';
 import { parseByteRangeFromResponseRangeHeader, parseContentLengthFromRangeHeader } from './utils/utils.js';
 import config from './config.js';
 import { TypedEventEmitter } from './TypedEventEmitter.js';
-import { StreamUrlModel } from './models/StreamUrlModel.js';
+import { StreamSource } from './models/StreamUrlModel.js';
 import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
+import { StreamSpeedTester } from './utils/streamSpeedTester.js';
 type ResumableStreamDataEventArgs = { position: number, buffer: Buffer }
 type ResumableStreamEventTypes = { 'data': [args: ResumableStreamDataEventArgs], 'error': [arg1: Error] }
 const BufferSnapshotMaxItems = 10;  //buffer snapshot max items for finding the stream health
 
-export const streamerv2 = async (streamUrlModel: StreamUrlModel, bf: VirtualBufferCollection, size: number, initialPosition: number) => {
+export const createResumableStream = async (streamUrlModel: StreamSource, bf: VirtualBufferCollection, size: number, initialPosition: number) => {
     log.info(`Building a new '${new URL(streamUrlModel.streamUrl).host}' stream with rank ${streamUrlModel.speedRank} offset: ${initialPosition}`);
 
     const _internalHeaders = streamUrlModel.headers || {};
@@ -27,7 +28,7 @@ export const streamerv2 = async (streamUrlModel: StreamUrlModel, bf: VirtualBuff
             const contentLengthHeader = parseInt(response.headers['content-length'] || '0');
             const potentialContentLength = parseContentLengthFromRangeHeader(response.headers['content-range'] || '')
                 || contentLengthHeader;
-            
+
             if (initialPosition > 0) {  //ensure the stream response respected the start position
                 const rangeValues = parseByteRangeFromResponseRangeHeader(response.headers['content-range'] || '');
                 (rangeValues?.start != initialPosition) && rej(new Error(`Range Mismatch : Initial position ${initialPosition} is not in the range of the response.`));
@@ -55,6 +56,7 @@ export class ResumableStream {
     private _gotStream: Request;
     private _readAheadExceeded = false;
     private _mre = ManualResetEvent.createNew();
+    private _firstChunkMre = ManualResetEvent.createNew();
     private _bf: VirtualBufferCollection;
     private _intervalPointer: NodeJS.Timer;
     private _bufferSnapshotIntervalPointer: NodeJS.Timer;
@@ -64,10 +66,10 @@ export class ResumableStream {
     private _bytesDownloaded = 0;
     private _forceEndPosition = Number.MAX_VALUE;
     //bus = new EventEmitter();
-    _streamUrlModel: StreamUrlModel;
+    _streamUrlModel: StreamSource;
 
 
-    constructor(stream: Request, initialPosition: number, bf: VirtualBufferCollection, um: StreamUrlModel) {
+    constructor(stream: Request, initialPosition: number, bf: VirtualBufferCollection, um: StreamSource) {
         this.startPosition = initialPosition;
         this._currentPosition = initialPosition;
         this._lastReaderPosition = initialPosition;
@@ -86,6 +88,7 @@ export class ResumableStream {
         }, 20000);
 
         this._bufferSnapshotIntervalPointer = setInterval(this.performBufferSnapshot, 1000);
+        this._firstChunkMre.reset();
     }
 
     private performBufferSnapshot = () => {
@@ -103,11 +106,21 @@ export class ResumableStream {
         }
     }
 
+    /**wait for the first chunk to be available*/
+    public async waitForFirstChunk(timeout: number = 3000) {
+        await this._firstChunkMre.wait(timeout, true);
+    }
+
     public startStreaming = async () => {
         try {
             log.info(`yay! we found a good stream... traversing it..`);
+            const stimer = new StreamSpeedTester();
+            stimer.startActivePeriod();
+
             for await (const chunk of this._gotStream) {
+                this._firstChunkMre.set();  //this signals that the first chunk has been received. Might be good if there's a way to do it only once. For now we are good.
                 if (this._drainRequested) break;
+                stimer.addData(chunk.length);
 
                 const _buf = (chunk as Buffer);
                 this._bf.push(_buf, this._currentPosition);      //_self.emit('data', { buffer: _buf, position: _self.currentPosition });
@@ -129,9 +142,11 @@ export class ResumableStream {
                     //await pEvent(this.bus, 'unlocked');    //do we need a bus?
                     log.info(`stream read ahead exhausted. Pausing for a while`);
                     this._mre.reset();
+                    stimer.pauseActivePeriod();
                     await this._mre.wait();
                     log.info(`unpausing the stream`);
                     this._readAheadExceeded = false;
+                    stimer.startActivePeriod();
                 }
             }
         } catch (error) {
@@ -153,7 +168,8 @@ export class ResumableStream {
         this._mre.set();
     };
 
-    //maybe a better name needed but this is helpful to advance the position of the stream if it's in read exhaust mode
+    
+    /**this is helpful to advance the position of the stream if it's in read exhaust mode*/
     public markLastReaderPosition = (position: number) => {
         if (this._lastReaderPosition < position) {
             this._lastReaderPosition = position;
@@ -233,6 +249,8 @@ export class ResumableStream {
 }
 
 export class ResumableStreamCollection {
+
+    /**try resuming the stream from the position if any of the existing streams can fullfill the range*/
     public tryResumingStreamFromPosition(position: number) {
         const exisitngStreams = this._st.filter(x => x.CanResolve(position));
         if (exisitngStreams.length > 0) {

@@ -16,7 +16,7 @@ export class VirtualBufferCollection {
             const toStartFrom = position - existingBuffer.range.start; //201-200 =1
             const toEnd = toStartFrom + bytesRequested - bytesConsumed;
             const bufferToSend = existingBuffer.buffer.subarray(toStartFrom, toEnd)
-                                        .subarray(0, config.chunkSizeBytes); //1,104
+                .subarray(0, config.chunkSizeBytes); //1,104
 
             //console.log(`Buffer sliced from ${toStartFrom} - ${toEnd} with ${bufferToSend.byteLength} bytes`);
             bytesConsumed += bufferToSend.byteLength; //99

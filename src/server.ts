@@ -69,7 +69,7 @@ app.register((route, opts, next) => {
                 size: documentSize,
                 start: range.start,
                 end: range.end,
-                rawHttpMessage: request.raw
+                rawHttpMessage: request.raw //may be see we can pass a abort signal instead of the entire http request
             });
             reply.header('Content-Type', 'application/octet-stream');
             reply.header('Accept-Ranges', 'bytes');
