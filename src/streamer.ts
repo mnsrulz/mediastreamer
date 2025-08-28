@@ -131,7 +131,9 @@ class InternalStream {
                 _st.addStream(newStream);
                 newStream.startStreaming()
                     .finally(() => _st.removeStream(newStream));
-                await newStream.waitForFirstChunk();
+                log.info('Waiting for the first chunk stream to be available');
+                //await newStream.waitForFirstChunk(3000);
+                log.info(`Successfully created new stream for ${this._imdbId}`);
             } catch (error) {
                 log.error((error as Error)?.message)
                 _streamSources.remove(fastestStreamSource);
@@ -193,7 +195,7 @@ class InternalStream {
                 } else {
                     _instance.throwIfNoStreamUrlPresent();
                     await _instance.ensureBufferCoverage({ position });
-                    //await delay(300);   //wait for 300ms    --kind of hackyy
+                    await delay(300);   //wait for 300ms    --kind of hackyy
                 }
             }
             rawHttpRequest.destroyed ?

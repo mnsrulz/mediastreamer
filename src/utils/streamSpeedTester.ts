@@ -9,14 +9,14 @@ interface ChunkRecord {
 export class StreamSpeedTester {
     private chunks: ChunkRecord[] = [];
     private cumulativeBytes = 0;
-    private intervalPointer: NodeJS.Timer | null = null;
-    private intervalMs: number;
+    // private intervalPointer: NodeJS.Timer | null = null;
+    // private intervalMs: number;
     private activeStartTime: number | null = null; // tracks streaming periods
     private pausedTime = 0;
 
     constructor(logIntervalMs = 5000) {
-        this.intervalMs = logIntervalMs;
-        this.intervalPointer = setInterval(() => this.logSpeed(), this.intervalMs);
+        // this.intervalMs = logIntervalMs;
+        // this.intervalPointer = setInterval(() => this.logSpeed(), this.intervalMs);
     }
 
     /** Call this when stream starts or resumes */
@@ -69,7 +69,7 @@ export class StreamSpeedTester {
     }
 
     clear() {
-        if (this.intervalPointer) clearInterval(this.intervalPointer);
+        // if (this.intervalPointer) clearInterval(this.intervalPointer);
         this.chunks = [];
         this.cumulativeBytes = 0;
         this.activeStartTime = null;

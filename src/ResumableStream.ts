@@ -25,6 +25,7 @@ export const createResumableStream = async (streamUrlModel: StreamSource, bf: Vi
             https: { rejectUnauthorized: false },
             headers: _internalHeaders
         }).on('response', (response: Response) => {
+            log.info(`Response received from the stream '${new URL(streamUrlModel.streamUrl).host}' source. StatusCode: ${response.statusCode}`);
             const contentLengthHeader = parseInt(response.headers['content-length'] || '0');
             const potentialContentLength = parseContentLengthFromRangeHeader(response.headers['content-range'] || '')
                 || contentLengthHeader;
@@ -56,8 +57,8 @@ export class ResumableStream {
     private _gotStream: Request;
     private _readAheadExceeded = false;
     private _lastReadAheadExceededTime: Date | undefined;
-    private _mre = ManualResetEvent.createNew();
-    private _firstChunkMre = ManualResetEvent.createNew();
+    private _mre: ManualResetEvent;
+    private _firstChunkMre: ManualResetEvent;
     private _bf: VirtualBufferCollection;
     private _intervalPointer: NodeJS.Timer;
     private _bufferSnapshotIntervalPointer: NodeJS.Timer;
@@ -78,7 +79,8 @@ export class ResumableStream {
         this._gotStream = stream;
         this._bf = bf;
         this._streamUrlModel = um;
-
+        this._mre = ManualResetEvent.createNew();
+        this._firstChunkMre = ManualResetEvent.createNew();
         //this is to show if the stream break the code behaves appropriately.
         //move this to global monitoring.. these sort of actions can be decoupled
         const _i = this;
@@ -90,7 +92,6 @@ export class ResumableStream {
         }, 20000);
 
         this._bufferSnapshotIntervalPointer = setInterval(this.performBufferSnapshot, 1000);
-        this._firstChunkMre.reset();
     }
 
     private performBufferSnapshot = () => {
@@ -109,24 +110,31 @@ export class ResumableStream {
     }
 
     /**wait for the first chunk to be available*/
-    public async waitForFirstChunk(timeout: number = 3000) {
+    public async waitForFirstChunk(timeout: number) {
         await this._firstChunkMre.wait(timeout, true);
     }
 
     public startStreaming = async () => {
         try {
+            let firstChunkReceived = false;
             log.info(`yay! we found a good stream... traversing it..`);
 
             this._speedTester.startActivePeriod();
 
             for await (const chunk of this._gotStream) {
-                this._firstChunkMre.set();  //this signals that the first chunk has been received. Might be good if there's a way to do it only once. For now we are good.
+                if (!firstChunkReceived) {
+                    this._firstChunkMre.set();  //this signals that the first chunk has been received. Might be good if there's a way to do it only once. For now we are good.
+                    firstChunkReceived = true;
+                }
+
                 if (this._drainRequested) break;
-                this._speedTester.addData(chunk.length);
 
                 const _buf = (chunk as Buffer);
                 this._bf.push(_buf, this._currentPosition);      //_self.emit('data', { buffer: _buf, position: _self.currentPosition });
                 this._currentPosition += _buf.byteLength; this._bytesDownloaded += _buf.byteLength;
+
+                this._speedTester.addData(_buf.byteLength);
+
                 this.lastUsed = new Date();
 
                 if (this._bf.existingBufferWhichCanSatisfyPosition(this._currentPosition)) {
