@@ -197,10 +197,14 @@
                                         </div>
                                         <div style="margin-top: 0.5em;">
                                             <strong>Speed:</strong>
-                                            <span class="ui mini label">Current: {{
+                                            <!-- <span class="ui mini label">Current: {{
                                                 Math.round(stream.speedStats.currentSpeedBps) }} Bps</span>
                                             <span class="ui mini label">Avg: {{
-                                                Math.round(stream.speedStats.cumulativeSpeedBps) }} Bps</span>
+                                                Math.round(stream.speedStats.cumulativeSpeedBps) }} Bps</span> -->
+                                            <span class="ui mini label">Current: {{
+                                                stream.speedStats.currentSpeedHuman }}</span>
+                                            <span class="ui mini label">Avg: {{
+                                                stream.speedStats.cumulativeSpeedHuman }}</span>
                                         </div>
                                         <div v-if="stream.lastReadAheadExceededTime">
                                             <small>Last Read Ahead Exceeded: <span

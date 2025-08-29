@@ -1,3 +1,4 @@
+import prettyBytes from 'pretty-bytes';
 import { EventEmitter } from 'node:events';
 import got, { Request, Response } from 'got';
 import dayjs from 'dayjs';
@@ -259,7 +260,9 @@ export class ResumableStream {
             slowStreamHandled: _slowStreamHandled,
             speedStats: {
                 cumulativeSpeedBps: _speedTester.cumulativeSpeedBps,
-                currentSpeedBps: _speedTester.currentSpeedBps
+                currentSpeedBps: _speedTester.currentSpeedBps,
+                cumulativeSpeedHuman: prettyBytes(_speedTester.cumulativeSpeedBps),
+                currentSpeedHuman:  prettyBytes(_speedTester.currentSpeedBps)
             }
         };
     }
