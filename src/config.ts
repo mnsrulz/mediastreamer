@@ -5,7 +5,7 @@ export default {
     chunkSizeBytes: parseInt(process.env.CHUNK_SIZE_BYTES || '262144'),  //256 KB by default chunk size
     refreshInterval: parseInt(process.env.LINKS_REFRESH_INTERVAL_MS || '30000'),
     maxChunkSizeMB: parseInt(process.env.MAX_CHUNK_SIZE_MB || '8'),
-    readAheadSizeMB: parseInt(process.env.READ_AHEAD_SIZE_MB || '16'),
+    readAheadSizeMB: parseInt(process.env.READ_AHEAD_SIZE_MB || '8'),
     linksApiUrl: process.env.LINKS_API_URL || 'http://admin:admin@localhost:8000',
     rootPath: process.env.ROOT_PATH || '/'
 }

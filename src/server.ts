@@ -6,6 +6,7 @@ import { streamer, currentStats, clearBuffers } from './streamer.js';
 import { parseRangeRequest } from './utils/utils.js';
 import path from 'path';
 import prettyBytes from 'pretty-bytes';
+import { getLinks, getPlaylistItems } from './apiClient.js';
 
 app.addContentTypeParser('*', { parseAs: 'buffer' }, function (request, payload, done) { done(null); });
 
@@ -36,6 +37,25 @@ app.register((route, opts, next) => {
         return currentStats();
     })
 
+    route.get('/items/movies', async (request, reply) => {
+        const movies = await getPlaylistItems('plexmovie');
+        reply.type('application/json').code(200);
+        return movies.map(k => ({ ...k, type: 'movie' }));
+    });
+
+    route.get('/items/tv', async (request, reply) => {
+        const tvShows = await getPlaylistItems('plextv');
+        reply.type('application/json').code(200);
+        return tvShows.map(k => ({ ...k, type: 'tv' }));
+    });
+
+    route.get<GetLinksRequest>('/links/:imdbid', async (request, reply) => {
+        const { imdbid } = request.params;
+        const links = await getLinks(imdbid);
+        reply.type('application/json').code(200);
+        return links;
+    });
+
 
     //the size param is expected to start with z and followed by string which is base 32 encoded of the actual file size. This is just to make the file name compact :).
     route.head<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
@@ -49,6 +69,7 @@ app.register((route, opts, next) => {
         if (request.headers['range'] && range) {
             reply.header('Content-Range', `bytes ${range.start}-${range.end}/${documentSize}`);
             reply.header('Content-Length', range.end - range.start + 1);
+            reply.code(206);
         } else {
             reply.header('Content-Length', documentSize);
         }
@@ -75,6 +96,7 @@ app.register((route, opts, next) => {
             reply.header('Accept-Ranges', 'bytes');
             reply.header('Content-Length', range.end - range.start + 1);
             reply.header('Content-Range', `bytes ${range.start}-${range.end}/${documentSize}`);
+            reply.code(206);
             return reply.send(resp);
         }
         throw new Error('Only range request supported!');
@@ -98,5 +120,11 @@ app.listen({ port: config.DEFAULT_SERVER_PORT, host: '0.0.0.0' }, (err) => {
 interface GetStreamRequest {
     Params: {
         imdbid: string, size: string
+    }
+}
+
+interface GetLinksRequest {
+    Params: {
+        imdbid: string
     }
 }

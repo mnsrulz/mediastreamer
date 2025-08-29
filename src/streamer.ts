@@ -54,6 +54,7 @@ class InternalStream {
     _size: number;
     private _isRefreshingStreams = false;
     private _refreshTimer: NodeJS.Timer | null = null;
+    private _internalPromise: Promise<void>;
     async requestRefresh() {
         if (this._streamSources.isEmpty()) {
             if (!this._isRefreshingStreams) {
@@ -102,8 +103,7 @@ class InternalStream {
             log.info(`Reusing existing stream for '${req.imdbId}' with size ${prettyBytes(req.size)}.`);
             await existingStream.requestRefresh();  //silent refresh of the streams
         } else {
-            const tempstreams = await acquireStreams(req.imdbId, req.size);
-            existingStream = new InternalStream(req.imdbId, req.size, tempstreams);
+            existingStream = new InternalStream(req.imdbId, req.size);
             globalStreams.push(existingStream);
         }
         return existingStream;
@@ -113,10 +113,13 @@ class InternalStream {
         return this._resumableStreams.length;
     }
 
-    constructor(imdbId: string, size: number, streams: StreamSource[]) {
+    constructor(imdbId: string, size: number) {
         this._imdbId = imdbId;
         this._size = size;
-        this._streamSources = new StreamSourceCollection(streams);
+        this._streamSources = new StreamSourceCollection([]);
+        this._internalPromise = acquireStreams(imdbId, size).then(k => {
+            this._streamSources = new StreamSourceCollection(k)
+        })
     }
 
     private ensureBufferCoverage = async (args: InternalStreamRequestStreamEventArgs) => {
@@ -139,7 +142,8 @@ class InternalStream {
         }
     }
 
-    public requestRange = (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
+    public requestRange = async (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {        
+        await this._internalPromise;    //this should first time wait only.
         log.info(`Requesting ${prettyBytes(end - start)} from ${prettyBytes(start)} for '${this._imdbId}' having size '${prettyBytes(this._size)}'`);
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
@@ -196,7 +200,7 @@ class InternalStream {
                 }
             }
             rawHttpRequest.destroyed ?
-                log.info('Ooops! Seems like the underlying http request has been destroyed. Aborting now!!!') :
+                log.warn('Ooops! Seems like the underlying http request has been destroyed. Aborting now!!!') :
                 log.info(`Stream transmitted ${prettyBytes(bytesConsumed)} for '${_instance._imdbId}' having size '${prettyBytes(_instance._size)}'`);
         }
 
@@ -219,7 +223,7 @@ interface StreamerRequest {
 
 export const streamer = async (req: StreamerRequest) => {
     const existingStream = await InternalStream.create(req);
-    return existingStream.requestRange(req.start, req.end, req.rawHttpMessage);
+    return await existingStream.requestRange(req.start, req.end, req.rawHttpMessage);
 }
 
 

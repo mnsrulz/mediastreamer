@@ -23,7 +23,13 @@
         crossorigin="anonymous" />
 
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+    <link rel="stylesheet" type="text/css"
+        href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+    <!-- <link href="https://unpkg.com/video.js/dist/video-js.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/video.js/dist/video.min.js"></script> -->
+
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 </head>
 
 <body>
@@ -34,7 +40,7 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(255,255,255,0.95);
+            background: rgba(255, 255, 255, 0.95);
             z-index: 2000;
             display: flex;
             align-items: center;
@@ -53,11 +59,22 @@
         const app = createApp(vm);
         app.mount('#app');
         document.getElementById('app-loader').style.display = 'none';
+
+        $('.ui.buttons .button')
+            .on('click', function () {
+                $(this).addClass('active').siblings().removeClass('active');
+            });
     </script>
     <div id="app" v-cloak style="margin-top: 50px;">
         <div class="ui grid container">
             <div class="four wide column">
                 <div class="ui segment">
+                    <div id="add-button-container">
+                        <button class="ui compact icon button" @click="showAddItemModal"
+                            :disabled="mediaItems.length <= 1">
+                            <i class="search icon"></i>
+                        </button>
+                    </div>
                     <div class="ui link list fluid">
                         <template v-if="items && items.length > 0">
                             <template v-for="item in items">
@@ -91,6 +108,10 @@
                     <button class="ui primary button" style="margin-bottom: 1em;" @click="openRangeDialog"
                         :disabled="!selectedImdbId">
                         Request Range
+                    </button>
+                    <button class="ui primary button" style="margin-bottom: 1em;"
+                        @click="playVideo(selectedImdbId, selectedItemSize)" :disabled="!selectedImdbId">
+                        Play Video
                     </button>
                     <!-- Modal Dialog for Range Input with Dimmer -->
                     <div v-if="showRangeDialog">
@@ -197,7 +218,72 @@
                     </div>
                 </div>
             </div>
+            <div class="ui search-media-item modal">
+                <div class="header">Search Item</div>
+                <div class="content">
+                    <div class="ui form">
+                        <div class="ui search">
+                            <div class="ui fluid icon input">
+                                <input class="prompt" type="text" placeholder="Search items...">
+                                <i class="search icon"></i>
+                            </div>
+                            <div class="results"></div>
+                        </div>
+                        <div v-if="selectedMediaItem" class="ui relaxed divided list scrolling content">
+                            <template v-if="selectedMediaItemLinks && selectedMediaItemLinks.length > 0">
+                                <template v-for="item in selectedMediaItemLinks">
+                                    <div class="item">
+                                        <i class="large play middle aligned link icon" @click="playVideo(item.imdbId, item.size)"></i>
+                                        <div class="content">
+                                            <span class="header">{{ item.title }}</span>
+                                            <div class="description">{{item.lastUpdated}}</div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </template>
+                            <template v-else>
+                                <div class="item">nothing</div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                <div class="actions">
+                    <div class="ui negative button">
+                        Cancel
+                    </div>
+                </div>
+            </div>
+            <!-- <div class="ui video-player-modal modal">
+                <div class="header">Video</div>
+                <div class="content">
+                    <div v-if="showVideoPlayer" style="margin-top: 20px">
+                        <video ref="videoPlayer" class="video-js vjs-default-skin" controls preload="auto" width="640"
+                            height="360">
+                            <source :src="currentVideoSrc" type="video/mp4" />
+                        </video>
+                    </div>
+                </div>
+                <div class="actions">
+                    <div class="ui negative button">
+                        Cancel
+                    </div>
+                </div>
+            </div> -->
+            <div class="ui video-player-modal modal">
+                <div class="header">Video</div>
+                <div class="content">
+                    <div v-if="showVideoPlayer" style="margin-top: 20px">
+                        <video ref="videoPlayer" playsinline controls width="640" height="360">
+                            <source :src="currentVideoSrc" type="video/mp4" />
+                        </video>
+                    </div>
+                </div>
+                <div class="actions">
+                    <div class="ui negative button">Cancel</div>
+                </div>
+            </div>
         </div>
     </div>
 </body>
+
 </html>

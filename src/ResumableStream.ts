@@ -295,7 +295,7 @@ export class ResumableStreamCollection {
     }
 
     public removeStream(stream: ResumableStream) {
-        log.info(`Removing the gostream with stats: ${JSON.stringify(stream.stats)}`)
+        log.info(`Removing the gostream: ${new URL(stream._streamUrlModel.streamUrl).hostname}`)
         this._st = this._st.filter(s => s !== stream);
     }
 

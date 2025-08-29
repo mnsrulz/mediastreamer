@@ -15,11 +15,21 @@ interface linksResponse {
         headers: Record<string, string>
     }[]
 }
-export const getLinks = async (imdbId: string, size: number) => {
+export const getLinks = async (imdbId: string, size?: number) => {
     log.info(`requesting getLinks for imdbId: '${imdbId}' with size: '${size}'`);
-    const u = await instance(`api/links?imdbId=${imdbId}&per_page=100&size=${size}`)
-        .json<linksResponse>();
+    const sp: Record<string, string | number> = {
+        imdbId: imdbId,
+        per_page: 100
+    }
+    if (size) sp['size'] = size;
+    const u = await instance(`api/links`, {
+        searchParams: sp
+    }).json<linksResponse>();
     return u.items.filter(x => x.status === 'Valid');
+}
+
+export const getPlaylistItems = async (playlist: 'plextv' | 'plexmovie') => {
+    return await instance(`api/playlist/${playlist}/items/`).json<{}[]>();
 }
 
 export const requestRefresh = async (docId: string) => {
