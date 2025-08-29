@@ -1,6 +1,3 @@
-import prettyBytes from 'pretty-bytes';
-import { log } from '../app.js';
-
 interface ChunkRecord {
     timestamp: number;
     bytes: number;
@@ -9,15 +6,11 @@ interface ChunkRecord {
 export class StreamSpeedTester {
     private chunks: ChunkRecord[] = [];
     private cumulativeBytes = 0;
-    // private intervalPointer: NodeJS.Timer | null = null;
-    // private intervalMs: number;
-    private activeStartTime: number | null = null; // tracks streaming periods
-    private pausedTime = 0;
 
-    constructor(logIntervalMs = 5000) {
-        // this.intervalMs = logIntervalMs;
-        // this.intervalPointer = setInterval(() => this.logSpeed(), this.intervalMs);
-    }
+    private activeStartTime: number | null = null; // when current active period started
+    private activeMs = 0; // total active streaming time
+
+    constructor() {}
 
     /** Call this when stream starts or resumes */
     startActivePeriod() {
@@ -29,50 +22,61 @@ export class StreamSpeedTester {
     /** Call this when stream is paused */
     pauseActivePeriod() {
         if (this.activeStartTime) {
-            this.pausedTime += Date.now() - this.activeStartTime;
+            // add this active stretch to total active time
+            this.activeMs += Date.now() - this.activeStartTime;
             this.activeStartTime = null;
         }
     }
 
+    /** Add bytes received during streaming */
     addData(bytes: number) {
         const now = Date.now();
         this.chunks.push({ timestamp: now, bytes });
         this.cumulativeBytes += bytes;
 
-        // remove old chunks for sliding window
-        const cutoff = now - 5000; 
+        // keep only last 5s of chunks for sliding window
+        const cutoff = now - 5000;
         this.chunks = this.chunks.filter(c => c.timestamp >= cutoff);
     }
 
+    /** Current speed = bytes per second over the last 5s */
     get currentSpeedBps(): number {
         if (this.chunks.length === 0) return 0;
 
         const now = Date.now();
         const cutoff = now - 5000;
-        const windowBytes = this.chunks.filter(c => c.timestamp >= cutoff)
-                                       .reduce((sum, c) => sum + c.bytes, 0);
-        const elapsedSec = 5; // sliding window duration
-        return windowBytes / elapsedSec;
+        const windowBytes = this.chunks
+            .filter(c => c.timestamp >= cutoff)
+            .reduce((sum, c) => sum + c.bytes, 0);
+
+        return windowBytes / 5;
     }
 
-    /** Cumulative speed only counting active periods */
+    /** Cumulative speed = avg bytes/sec over total *active* time */
     get cumulativeSpeedBps(): number {
-        const now = Date.now();
-        const startTime = this.chunks[0]?.timestamp || now;
-        const elapsedMs = Math.max(now - startTime - this.pausedTime, 1);
-        return this.cumulativeBytes / (elapsedMs / 1000);
-    }
+        let totalActiveMs = this.activeMs;
 
-    private logSpeed() {
-        const speed = this.currentSpeedBps;
-        log.info(`Stream speed: ${prettyBytes(speed)}/s`);
+        // if currently active, include ongoing active duration
+        if (this.activeStartTime) {
+            totalActiveMs += Date.now() - this.activeStartTime;
+        }
+
+        if (totalActiveMs <= 0) return 0;
+
+        return this.cumulativeBytes / (totalActiveMs / 1000);
     }
 
     clear() {
-        // if (this.intervalPointer) clearInterval(this.intervalPointer);
         this.chunks = [];
         this.cumulativeBytes = 0;
         this.activeStartTime = null;
-        this.pausedTime = 0;
+        this.activeMs = 0;
+    }
+
+    /** Debug helper */
+    logSpeed() {
+        console.log(
+            `cumulativeSpeedBps: ${this.cumulativeSpeedBps.toFixed(2)}, currentSpeedBps: ${this.currentSpeedBps.toFixed(2)}`
+        );
     }
 }
