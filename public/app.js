@@ -1,5 +1,12 @@
 import * as Plot from "https://esm.sh/@observablehq/plot@0.6.13?bundle";
 import ky from "https://esm.sh/ky";
+
+import dayjs from "https://esm.sh/dayjs";
+import relativeTime from "https://esm.sh/dayjs/plugin/relativeTime.js";
+import prettyBytes from 'https://esm.sh/pretty-bytes';
+
+dayjs.extend(relativeTime);
+
 // const apiResponse = await fetch('stats');
 // const apiData = await apiResponse.json();
 const REFRESH_INTERVAL_MS = 1000;
@@ -74,6 +81,7 @@ export const vm = {
         this.fetchStats();
         this.fetchItems();
         this._interval = setInterval(this.fetchStats, REFRESH_INTERVAL_MS);
+        this.videoPlayerInstance = videojs(this.$refs.videoPlayer);
     },
     unmounted() {
         clearInterval(this._interval);
@@ -109,6 +117,8 @@ export const vm = {
         }
     },
     methods: {
+        dayjs,
+        prettyBytes,
         setSelectedImdbId: function (imdbId, size) {
             this.selectedImdbId = imdbId;
             this.selectedItemSize = size;
@@ -173,103 +183,24 @@ export const vm = {
                     }
                 });
         },
-        playVideoVideojs(imdbId, size) {
-            $('.video-player-modal').modal({ blurring: true }).modal('show');
-            const uu = `stream/${imdbId}/${this.getSizeId(size)}`
-
-            this.currentVideoSrc = uu;
-            this.showVideoPlayer = true;
-
-            this.$nextTick(() => {
-                if (!this.videoPlayerInstance) {
-                    this.videoPlayerInstance = videojs(this.$refs.videoPlayer, {}, () => {
-                        console.log('Video.js ready');
-                        this.videoPlayerInstance.play(); // autoplay
-                    });
-
-                    // 🔹 Add auto-retry handler
-                    let retryCount = 0;
-                    this.videoPlayerInstance.on('error', () => {
-                        const err = this.videoPlayerInstance.error();
-                        console.warn("Video.js error:", err);
-
-                        if (retryCount < 5) {
-                            const delay = (retryCount + 1) * 2000; // 2s, 4s, 6s…
-                            console.log(`Retrying playback in ${delay / 1000}s...`);
-                            setTimeout(() => {
-                                retryCount++;
-                                this.videoPlayerInstance.reset();
-                                this.videoPlayerInstance.src({ type: 'video/mp4', src: this.currentVideoSrc });
-                                this.videoPlayerInstance.play().catch(() => { });
-                            }, delay);
-                        } else {
-                            console.error("Max retries reached, giving up.");
-                        }
-                    });
-                } else {
-                    this.videoPlayerInstance.src({ type: 'video/mp4', src: uu });
-                    this.videoPlayerInstance.play();
-                }
-            });
-        },
         playVideo(imdbId, size) {
             $('.video-player-modal').modal({
                 blurring: true,
-                onHidden: () => {
-                    // pause the video when modal closes
-                    // if (this.$refs.videoPlayer) {
-                    //     this.$refs.videoPlayer.pause();
-                    //     // this.$refs.videoPlayer.currentTime = 0; // optional: reset to start
-                    // }
-
+                onHide: () => {
                     if (this.videoPlayerInstance) {
                         this.videoPlayerInstance.pause();
-                        this.videoPlayerInstance.currentTime = 0;
+                        this.$refs.videoPlayer.src = '';
                     }
                     this.showVideoPlayer = false; // hide Vue video wrapper
                 }
             }).modal('show');
-            const mediaUrl = `stream/${imdbId}/${this.getSizeId(size)}`;
 
-            this.currentVideoSrc = mediaUrl;
+            const mediaUrl = `stream/${imdbId}/${this.getSizeId(size)}`
+            // this.currentVideoSrc = mediaUrl;
+
+            this.videoPlayerInstance.src({ src: mediaUrl, type: "video/mp4" });
             this.showVideoPlayer = true;
-
-            this.$nextTick(() => {
-                if (!this.videoPlayerInstance) {
-                    this.videoPlayerInstance = new Plyr(this.$refs.videoPlayer, {
-                        autoplay: true,
-                        controls: ['play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen']
-                    });
-
-                    // 🔹 Auto-retry handler
-                    let retryCount = 0;
-                    this.$refs.videoPlayer.addEventListener('error', () => {
-                        const mediaError = this.$refs.videoPlayer.error;
-                        console.warn("Plyr/HTML5 error:", mediaError);
-
-                        if (retryCount < 5) {
-                            const delay = (retryCount + 1) * 2000;
-                            console.log(`Retrying playback in ${delay / 1000}s...`);
-                            setTimeout(() => {
-                                retryCount++;
-                                this.$refs.videoPlayer.load();
-                                this.$refs.videoPlayer.play().catch(() => { });
-                            }, delay);
-                        } else {
-                            console.error("Max retries reached, giving up.");
-                        }
-                    });
-                } else {
-                    // update source dynamically
-                    this.videoPlayerInstance.source = {
-                        type: 'video',
-                        sources: [
-                            { src: mediaUrl, type: 'video/mp4' }
-                        ]
-                    };
-                    this.videoPlayerInstance.play();
-                }
-            });
+            this.videoPlayerInstance.play();
         }
     }
 }

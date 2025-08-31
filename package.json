@@ -23,7 +23,7 @@
     "@fastify/one-line-logger": "^1.2.0",
     "@fastify/static": "^6.11.2",
     "@logtail/pino": "^0.5.0",
-    "dayjs": "^1.11.7",
+    "dayjs": "^1.11.18",
     "dotenv": "^16.3.1",
     "fast-sort": "^3.4.0",
     "fastify": "^4.17.0",

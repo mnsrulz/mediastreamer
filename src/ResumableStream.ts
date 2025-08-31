@@ -1,13 +1,12 @@
 import prettyBytes from 'pretty-bytes';
-import { EventEmitter } from 'node:events';
 import got, { Request, Response } from 'got';
 import dayjs from 'dayjs';
-import { pEvent } from 'p-event';
+import relativeTime from 'dayjs/plugin/relativeTime.js';
+dayjs.extend(relativeTime)
 import { ManualResetEvent } from './utils/ManualResetEvent.js';
 import { log } from './app.js';
 import { parseByteRangeFromResponseRangeHeader, parseContentLengthFromRangeHeader } from './utils/utils.js';
 import config from './config.js';
-import { TypedEventEmitter } from './TypedEventEmitter.js';
 import { StreamSource } from './models/StreamUrlModel.js';
 import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
 import { StreamSpeedTester } from './utils/streamSpeedTester.js';
@@ -71,6 +70,7 @@ export class ResumableStream {
     private _speedTester = new StreamSpeedTester();
     //bus = new EventEmitter();
     _streamUrlModel: StreamSource;
+    private _streamHost: string;
 
 
     constructor(stream: Request, initialPosition: number, bf: VirtualBufferCollection, um: StreamSource) {
@@ -80,6 +80,7 @@ export class ResumableStream {
         this._gotStream = stream;
         this._bf = bf;
         this._streamUrlModel = um;
+        this._streamHost = new URL(um.streamUrl).hostname;
         this._mre = ManualResetEvent.createNew();
         this._firstChunkMre = ManualResetEvent.createNew();
         //this is to show if the stream break the code behaves appropriately.
@@ -87,7 +88,7 @@ export class ResumableStream {
         const _i = this;
         this._intervalPointer = setInterval(() => {
             if (dayjs(_i.lastUsed).isBefore(dayjs(new Date()).subtract(10, 'minute'))) {
-                log.warn(`ok.. forcing the stream to auto destroy after idling for more than 10 minute`);
+                log.warn(`Forcing the stream to auto destroy after idling for more than 10 minute`);
                 _i.drainIt();
             }
         }, 20000);
@@ -118,7 +119,7 @@ export class ResumableStream {
     public startStreaming = async () => {
         try {
             let firstChunkReceived = false;
-            log.info(`yay! we found a good stream... traversing it..`);
+            log.info(`Yay! We found a good stream... traversing it..`);
 
             this._speedTester.startActivePeriod();
 
@@ -139,12 +140,12 @@ export class ResumableStream {
                 this.lastUsed = new Date();
 
                 if (this._bf.existingBufferWhichCanSatisfyPosition(this._currentPosition)) {
-                    log.info(`there's already a buffer which can satisfy upcomping buffer position '${this._currentPosition}' so breaking this stream.`);
+                    log.info(`There's already a buffer which can satisfy upcomping buffer position '${this._currentPosition}' so breaking this stream.`);
                     break;
                 }
 
                 if (this._currentPosition >= this._forceEndPosition) {
-                    log.info(`force end position (${this._forceEndPosition}) detected for this stream at buffer position '${this._currentPosition}' so breaking this stream.`);
+                    log.info(`Force end position (${this._forceEndPosition}) detected for this stream at buffer position '${this._currentPosition}' so breaking this stream.`);
                     break;
                 }
 
@@ -152,11 +153,11 @@ export class ResumableStream {
                     this._readAheadExceeded = true;
                     this._lastReadAheadExceededTime = new Date();
                     //await pEvent(this.bus, 'unlocked');    //do we need a bus?
-                    log.info(`stream read ahead exhausted. Pausing for a while`);
+                    log.info(`Stream read ahead exhausted. Pausing for a while`);
                     this._mre.reset();
                     this._speedTester.pauseActivePeriod();
                     await this._mre.wait();
-                    log.info(`unpausing the stream`);
+                    log.info(`Resuming the stream`);
                     this._readAheadExceeded = false;
                     this._lastReadAheadExceededTime = undefined;
                     this._speedTester.startActivePeriod();
@@ -164,8 +165,8 @@ export class ResumableStream {
             }
         } catch (error) {
             this._drainRequested ?
-                log.info(`stream ended as drain requested. Actual Err: ${(error as Error)?.message}`) :
-                log.error(`error occurred while iterating the stream. Actual Err: ${(error as Error)?.message}`); //in case of errors the system will just create a new stream automatically.
+                log.info(`Stream ended as drain requested. Actual Err: ${(error as Error)?.message}`) :
+                log.error(`Error occurred while iterating the stream. Actual Err: ${(error as Error)?.message}`); //in case of errors the system will just create a new stream automatically.
         } finally {
             clearInterval(this._intervalPointer);
             clearInterval(this._bufferSnapshotIntervalPointer);
@@ -192,7 +193,7 @@ export class ResumableStream {
     };
 
     public drainIt = () => {
-        log.info(`drain requested so destryoing the existing stream...`);
+        log.info(`Drain requested so destroying the existing stream...`);
         this._drainRequested = true;
         this._gotStream.destroy();
         //this.bus.emit('unlocked');
@@ -218,7 +219,7 @@ export class ResumableStream {
     public get isSlowStream() {
         if (this.hasHealthyBuffer) return false;
         if (this.isGoodStream) return false;
-        log.info(`slow stream debug: ${this.hasHealthyBuffer}, ${this.isGoodStream}`);
+        log.info(`Slow stream debug. HasHealthyBuffer/IsGoodStream ${this.hasHealthyBuffer}/${this.isGoodStream}`);
         return true;
     }
 
@@ -246,12 +247,17 @@ export class ResumableStream {
 
 
     public get stats() {
-        const { lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester, _slowStreamHandled, _lastReadAheadExceededTime } = this;
+        const { lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester, 
+            _slowStreamHandled, _lastReadAheadExceededTime, _streamHost } = this;
         return {
             startPosition,
+            startPositionHuman: prettyBytes(startPosition),
             lastUsed,
+            lastUsedAgo: dayjs(lastUsed).fromNow(),
             currentPosition,
+            currentPositionHuman: prettyBytes(currentPosition),
             lastReaderPosition: _lastReaderPosition,
+            lastReaderPositionHuman: prettyBytes(_lastReaderPosition),
             drainRequested: _drainRequested,
             readAheadExceeded: _readAheadExceeded,
             lastReadAheadExceededTime: _lastReadAheadExceededTime,
@@ -262,8 +268,9 @@ export class ResumableStream {
                 cumulativeSpeedBps: _speedTester.cumulativeSpeedBps,
                 currentSpeedBps: _speedTester.currentSpeedBps,
                 cumulativeSpeedHuman: prettyBytes(_speedTester.cumulativeSpeedBps),
-                currentSpeedHuman:  prettyBytes(_speedTester.currentSpeedBps)
-            }
+                currentSpeedHuman: prettyBytes(_speedTester.currentSpeedBps)
+            },
+            sourceHost: _streamHost
         };
     }
 }

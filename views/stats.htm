@@ -25,14 +25,8 @@
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     <link rel="stylesheet" type="text/css"
         href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
-    <!-- <link href="https://unpkg.com/video.js/dist/video-js.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/video.js/dist/video.min.js"></script> -->
-
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
-    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-</head>
-
-<body>
+    <link href="https://unpkg.com/video.js/dist/video-js.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/video.js/dist/video.min.js"></script>
     <style>
         #app-loader {
             position: fixed;
@@ -48,6 +42,9 @@
             font-size: 2em;
         }
     </style>
+</head>
+
+<body>
     <div id="app-loader">
         <div class="ui active dimmer">
             <div class="ui large text loader">Loading app…</div>
@@ -56,6 +53,7 @@
     <script type="module">
         import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
         import { vm } from "./public/app.js";
+
         const app = createApp(vm);
         app.mount('#app');
         document.getElementById('app-loader').style.display = 'none';
@@ -66,15 +64,17 @@
             });
     </script>
     <div id="app" v-cloak style="margin-top: 50px;">
-        <div class="ui grid container">
-            <div class="four wide column">
+        <div class="ui stackable grid container">
+            <!-- Sidebar -->
+            <div class="sixteen wide mobile four wide tablet four wide computer column">
                 <div class="ui segment">
-                    <div id="add-button-container">
+                    <div id="add-button-container" style="margin-bottom: 1em;">
                         <button class="ui compact icon button" @click="showAddItemModal"
                             :disabled="mediaItems.length <= 1">
                             <i class="search icon"></i>
                         </button>
                     </div>
+
                     <div class="ui link list fluid">
                         <template v-if="items && items.length > 0">
                             <template v-for="item in items">
@@ -103,9 +103,11 @@
                     </div>
                 </div>
             </div>
-            <div class="twelve wide stretched column">
+
+            <!-- Main Content -->
+            <div class="sixteen wide mobile twelve wide tablet twelve wide computer stretched column">
                 <div class="ui segment">
-                    <button class="ui primary button" style="margin-bottom: 1em;" @click="openRangeDialog"
+                    <button class="ui primary button" style="margin-bottom: 0.5em;" @click="openRangeDialog"
                         :disabled="!selectedImdbId">
                         Request Range
                     </button>
@@ -113,7 +115,8 @@
                         @click="playVideo(selectedImdbId, selectedItemSize)" :disabled="!selectedImdbId">
                         Play Video
                     </button>
-                    <!-- Modal Dialog for Range Input with Dimmer -->
+
+                    <!-- Range Modal -->
                     <div v-if="showRangeDialog">
                         <div class="ui page modals dimmer transition visible active" style="z-index: 1000;"></div>
                         <div class="ui tiny modal active visible" style="display: block; z-index: 1100;">
@@ -140,15 +143,20 @@
                         </div>
                     </div>
 
+                    <!-- Item Card -->
                     <div v-if="selectedItem" class="ui card" style="margin-bottom: 1em;">
                         <div class="content">
                             <div class="header">{{ selectedItem.imdbId }}</div>
-                            <div class="meta">Size: <strong>{{ selectedItem.sizeHuman }}</strong> ({{
-                                selectedItem.size.toLocaleString() }} bytes)</div>
+                            <div class="meta">
+                                Size: <strong>{{ selectedItem.sizeHuman }}</strong>
+                                ({{ selectedItem.size.toLocaleString() }} bytes)
+                            </div>
                             <div class="description">
                                 <div class="ui list">
                                     <div class="item"><strong>Number of Streams:</strong> {{
                                         selectedItem.numberOfStreams }}</div>
+                                    <div class="item"><strong>Number of Active Requests:</strong> {{
+                                        selectedItem.activeRequests.length }}</div>
                                     <div class="item"><strong>Buffer Array Length:</strong> {{
                                         selectedItem.bufferArrayLength }}</div>
                                     <div class="item"><strong>Buffer Array Size:</strong> {{
@@ -157,60 +165,63 @@
                             </div>
                         </div>
                     </div>
+
                     <div v-html="plotChart"></div>
 
+                    <!-- Streams -->
                     <div v-if="selectedItem && selectedItem.streamStats && selectedItem.streamStats.length > 0"
                         class="ui segment">
                         <h4 class="ui header">Streams</h4>
                         <div class="ui relaxed divided list">
                             <div class="item" v-for="(stream, idx) in selectedItem.streamStats" :key="idx">
                                 <div class="ui grid">
-                                    <div class="eight wide column">
-                                        <div><strong>Start Position:</strong> {{ stream.startPosition }}</div>
-                                        <div><strong>Current Position:</strong> {{ stream.currentPosition }}</div>
-                                        <div><strong>Last Reader Position:</strong> {{ stream.lastReaderPosition }}
-                                        </div>
-                                        <div><strong>Last Used:</strong> <span :title="stream.lastUsed">{{ new
-                                                Date(stream.lastUsed).toLocaleString() }}</span></div>
+                                    <div class="sixteen wide mobile eight wide computer column">
+                                        <div><strong>Host:</strong> {{ stream.sourceHost }}</div>
+                                        <div><strong>Start Position:</strong> {{ stream.startPositionHuman }} ({{
+                                            stream.startPosition }})</div>
+                                        <div><strong>Current Position:</strong> {{ stream.currentPositionHuman }} ({{
+                                            stream.currentPosition }})</div>
+                                        <div><strong>Last Reader Position:</strong> {{ stream.lastReaderPositionHuman }}
+                                            ({{ stream.lastReaderPosition }})</div>
+                                        <div><strong>Last Used:</strong> <span :title="stream.lastUsed">{{
+                                                stream.lastUsedAgo }} ({{ new
+                                                Date(stream.lastUsed).toLocaleString() }})</span></div>
                                     </div>
-                                    <div class="eight wide column">
+                                    <div class="sixteen wide mobile eight wide computer column">
                                         <div>
-                                            <strong>Status:</strong>
+                                            <!-- <strong>Status:</strong>
                                             <span :class="['ui label', stream.isGoodStream ? 'green' : 'red']">
                                                 {{ stream.isGoodStream ? 'Good' : 'Bad' }}
-                                            </span>
+                                            </span> -->
                                             <span class="ui label"
                                                 :class="stream.hasHealthyBuffer ? 'green' : 'orange'">
                                                 Buffer: {{ stream.hasHealthyBuffer ? 'Healthy' : 'Low' }}
                                             </span>
                                             <span class="ui label" :class="stream.drainRequested ? 'red' : 'blue'">
-                                                Drain: {{ stream.drainRequested ? 'Requested' : 'Active' }}
+                                                Drain Requested: {{ stream.drainRequested ? 'Requested' : 'No' }}
                                             </span>
                                             <span class="ui label"
                                                 :class="stream.readAheadExceeded ? 'orange' : 'grey'">
-                                                Read Ahead: {{ stream.readAheadExceeded ? 'Exceeded' : 'OK' }}
+                                                Read Ahead: {{ stream.readAheadExceeded ? 'Exceeded' : 'No' }}
                                             </span>
-                                            <span class="ui label"
+                                            <!-- <span class="ui label"
                                                 :class="stream.slowStreamHandled ? 'yellow' : 'grey'">
                                                 Slow: {{ stream.slowStreamHandled ? 'Handled' : 'Normal' }}
-                                            </span>
+                                            </span> -->
                                         </div>
                                         <div style="margin-top: 0.5em;">
                                             <strong>Speed:</strong>
-                                            <!-- <span class="ui mini label">Current: {{
-                                                Math.round(stream.speedStats.currentSpeedBps) }} Bps</span>
-                                            <span class="ui mini label">Avg: {{
-                                                Math.round(stream.speedStats.cumulativeSpeedBps) }} Bps</span> -->
-                                            <span class="ui mini label">Current: {{
-                                                stream.speedStats.currentSpeedHuman }}</span>
-                                            <span class="ui mini label">Avg: {{
-                                                stream.speedStats.cumulativeSpeedHuman }}</span>
+                                            <span class="ui mini label">Current: {{ stream.speedStats.currentSpeedHuman
+                                                }}</span>
+                                            <span class="ui mini label">Avg: {{ stream.speedStats.cumulativeSpeedHuman
+                                                }}</span>
                                         </div>
                                         <div v-if="stream.lastReadAheadExceededTime">
-                                            <small>Last Read Ahead Exceeded: <span
-                                                    :title="stream.lastReadAheadExceededTime">{{ new
-                                                    Date(stream.lastReadAheadExceededTime).toLocaleString()
-                                                    }}</span></small>
+                                            <small>Last Read Ahead Exceeded:
+                                                <span :title="stream.lastReadAheadExceededTime">
+                                                    {{ new Date(stream.lastReadAheadExceededTime).toLocaleString() }}
+                                                </span>
+                                            </small>
                                         </div>
                                     </div>
                                 </div>
@@ -220,15 +231,40 @@
                     <div v-else-if="selectedItem">
                         <div class="ui message">No streams found for this item.</div>
                     </div>
+                    <!-- Active Requests -->
+                    <div v-if="selectedItem && selectedItem.activeRequests && selectedItem.activeRequests.length > 0"
+                        class="ui segment">
+                        <h4 class="ui header">Active Requests</h4>
+                        <div class="ui relaxed divided list">
+                            <div class="item" v-for="(activeRequest, idx) in selectedItem.activeRequests" :key="idx">
+                                <div class="ui grid">
+                                    <div class="sixteen wide mobile eight wide computer column">
+                                        <div><strong>Request Id:</strong> {{ activeRequest.requestId }}</div>
+                                        <div><strong>Created:</strong> {{ dayjs(activeRequest.created).fromNow() }}
+                                        </div>
+                                        <div><strong>Last Used:</strong> {{ dayjs(activeRequest.lastUsed).fromNow() }}
+                                        </div>
+                                        <div><strong>Bytes Consumed:</strong> {{
+                                            prettyBytes(activeRequest.bytesConsumed) }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="selectedItem">
+                        <div class="ui message">No active requests found for this item.</div>
+                    </div>
                 </div>
             </div>
+
+            <!-- Search Modal -->
             <div class="ui search-media-item modal">
                 <div class="header">Search Item</div>
                 <div class="content">
                     <div class="ui form">
                         <div class="ui search">
                             <div class="ui fluid icon input">
-                                <input class="prompt" type="text" placeholder="Search items...">
+                                <input class="prompt" type="text" placeholder="Search items..." />
                                 <i class="search icon"></i>
                             </div>
                             <div class="results"></div>
@@ -237,10 +273,11 @@
                             <template v-if="selectedMediaItemLinks && selectedMediaItemLinks.length > 0">
                                 <template v-for="item in selectedMediaItemLinks">
                                     <div class="item">
-                                        <i class="large play middle aligned link icon" @click="playVideo(item.imdbId, item.size)"></i>
+                                        <i class="large play middle aligned link icon"
+                                            @click="playVideo(item.imdbId, item.size)"></i>
                                         <div class="content">
                                             <span class="header">{{ item.title }}</span>
-                                            <div class="description">{{item.lastUpdated}}</div>
+                                            <div class="description">{{ item.lastUpdated }}</div>
                                         </div>
                                     </div>
                                 </template>
@@ -252,33 +289,22 @@
                     </div>
                 </div>
                 <div class="actions">
-                    <div class="ui negative button">
-                        Cancel
-                    </div>
+                    <div class="ui negative button">Cancel</div>
                 </div>
             </div>
-            <!-- <div class="ui video-player-modal modal">
-                <div class="header">Video</div>
-                <div class="content">
-                    <div v-if="showVideoPlayer" style="margin-top: 20px">
-                        <video ref="videoPlayer" class="video-js vjs-default-skin" controls preload="auto" width="640"
-                            height="360">
-                            <source :src="currentVideoSrc" type="video/mp4" />
-                        </video>
-                    </div>
-                </div>
-                <div class="actions">
-                    <div class="ui negative button">
-                        Cancel
-                    </div>
-                </div>
-            </div> -->
+
+            <!-- Video Modal -->
             <div class="ui video-player-modal modal">
                 <div class="header">Video</div>
                 <div class="content">
-                    <div v-if="showVideoPlayer" style="margin-top: 20px">
-                        <video ref="videoPlayer" playsinline controls width="640" height="360">
-                            <source :src="currentVideoSrc" type="video/mp4" />
+                    <div v-show="showVideoPlayer">
+                        <video ref="videoPlayer" playsinline controls class="video-js video-player" preload="auto">
+                            <p class="vjs-no-js">
+                                To view this video please enable JavaScript, and consider upgrading to a
+                                web browser that
+                                <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5
+                                    video</a>
+                            </p>
                         </video>
                     </div>
                 </div>
@@ -288,6 +314,45 @@
             </div>
         </div>
     </div>
+
+    <style>
+        .video-player {
+            height: 420px;
+            width: 100%;
+        }
+
+        @media (max-width: 767px) {
+            .ui.modal {
+                top: 0 !important;
+                left: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                max-height: 100% !important;
+                border-radius: 0 !important;
+            }
+
+            .ui.modal>.content {
+                height: calc(100% - 100px);
+                /* leave room for header + actions */
+                overflow-y: auto;
+                /* scroll if content is taller */
+            }
+
+            .video-player {
+                height: 240px;
+            }
+        }
+
+
+
+        /* Scroll for long lists */
+        .ui.relaxed.divided.list.scrolling.content {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+
 </body>
 
 </html>
