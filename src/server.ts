@@ -17,7 +17,7 @@ setInterval(clearBuffers, config.AUTO_CLEAR_BUFFERS_INTERVAL);   //register an a
 app.register((route, opts, next) => {
     route.register(fastifyStatic, {
         root: path.join(__dirname, 'public'),
-        prefix: '/public/'
+        prefix: '/'
     });
 
     route.get('/', async (request, reply) => {
