@@ -9,8 +9,7 @@ import { delay } from './utils/utils.js';
 import config from './config.js';
 import { createResumableStream, ResumableStreamCollection } from './ResumableStream.js';
 import { StreamSource, StreamSourceCollection } from './models/StreamUrlModel.js';
-
-const globalStreams: ResumableMediaStream[] = [];
+import dayjs from 'dayjs';
 
 const acquireStreams = async (imdbId: string, size: number) => {
     const links = await getLinks(imdbId, size);
@@ -42,7 +41,7 @@ TODO:
 
 class ResumableMediaStream {
     private _refreshRequested = false;
-    _bufferArray = new VirtualBufferCollection();    
+    _bufferArray = new VirtualBufferCollection();
     private _resumableStreams: ResumableStreamCollection = new ResumableStreamCollection();
     _imdbId: string;
     _streamSources: StreamSourceCollection;
@@ -50,6 +49,9 @@ class ResumableMediaStream {
     private _isRefreshingStreams = false;
     private _refreshTimer: NodeJS.Timer | null = null;
     private _internalPromise: Promise<void>;
+    private _created = new Date();
+    private _lastUsed = new Date();
+
     /**these represnets the active clients which are currently consuming the streams*/
     _activeRequests: ActiveRequestCollection = new ActiveRequestCollection();
     async requestRefresh() {
@@ -68,46 +70,34 @@ class ResumableMediaStream {
         try {
             log.trace(`Refreshing streams for imdb '${this._imdbId}' having size '${prettyBytes(this._size)}'`);
             this._isRefreshingStreams = true;
-            const tempstreams = await acquireStreams(this._imdbId, this._size);
-            this.mergeStream(tempstreams);
+            const streams = await acquireStreams(this._imdbId, this._size);
+            const docIdSpeedRankMap = new Map(streams.map(x => { return [x.docId, x.speedRank] }));//streams.map(x => x.docId);
+            this._streamSources.merge(streams);
+            const fastestStream = this._streamSources.fastest();
+            this._resumableStreams.updateSpeedRanks(docIdSpeedRankMap);
+
+            for (const currentgotstream of this._resumableStreams.Items) {
+                if (currentgotstream._streamUrlModel.speedRank < fastestStream.speedRank) {
+                    log.info(`Found a new stream '${new URL(fastestStream.streamUrl).hostname}' with rank ${fastestStream.speedRank} better than the existing '${new URL(currentgotstream._streamUrlModel.streamUrl).hostname}' ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
+                    currentgotstream.drainIt(); //drain this stream and let other one consume
+                }
+            }
         } catch (error) {
             log.error(error);
         }
         this._isRefreshingStreams = false;
         this._refreshRequested = false;
     }
-    mergeStream(streams: StreamSource[]) {
-        const docIdSpeedRankMap = new Map(streams.map(x => { return [x.docId, x.speedRank] }));//streams.map(x => x.docId);
-        this._streamSources.merge(streams);
-        const fastestStream = this._streamSources.fastest();
-        this._resumableStreams.updateSpeedRanks(docIdSpeedRankMap);
 
-        for (const currentgotstream of this._resumableStreams.Items) {
-            if (currentgotstream._streamUrlModel.speedRank < fastestStream.speedRank) {
-                log.info(`Found a new stream '${new URL(fastestStream.streamUrl).hostname}' with rank ${fastestStream.speedRank} better than the existing '${new URL(currentgotstream._streamUrlModel.streamUrl).hostname}' ${currentgotstream._streamUrlModel.speedRank}.. draining the existing one.`);
-                currentgotstream.drainIt(); //drain this stream and let other one consume
-            }
-        }
-    }
-
-
-    /*
-    Look for an existing stream which can satisfy the request. If not create one.
-    */
-    public static create = async (req: StreamerRequest) => {
-        let existingStream = globalStreams.find(s => s._imdbId === req.imdbId && s._size === req.size);
-        if (existingStream) {
-            log.info(`Reusing existing stream for '${req.imdbId}' with size ${prettyBytes(req.size)}.`);
-            await existingStream.requestRefresh();  //silent refresh of the streams
-        } else {
-            existingStream = new ResumableMediaStream(req.imdbId, req.size);
-            globalStreams.push(existingStream);
-        }
-        return existingStream;
-    }
-
-    public get MyGotStreamCount() {
+    public get StreamsCount() {
         return this._resumableStreams.length;
+    }
+
+    public get Created() {
+        return this._created;
+    }
+    public get LastUsed() {
+        return this._lastUsed;
     }
 
     constructor(imdbId: string, size: number) {
@@ -121,7 +111,7 @@ class ResumableMediaStream {
 
     private ensureBufferCoverage = async (args: ResumableMediaStreamRequestStreamEventArgs) => {
         if (!this._resumableStreams.tryResumingStreamFromPosition(args.position)) {
-            const { _resumableStreams: _st, _size, _bufferArray, _streamSources } = this;
+            const { _resumableStreams, _size, _bufferArray, _streamSources } = this;
             let fastestStreamSource = _streamSources.fastest();
             if (args.compensatingSlowStream) {
                 fastestStreamSource = _streamSources.fastestButNot(args.slowStreamStreamModel) || fastestStreamSource;
@@ -134,9 +124,9 @@ class ResumableMediaStream {
 
             try {
                 const newStream = await createResumableStream(fastestStreamSource, _bufferArray, _size, args.position);
-                _st.addStream(newStream);
+                _resumableStreams.addStream(newStream);
                 newStream.startStreaming()
-                    .finally(() => _st.removeStream(newStream));
+                    .finally(() => _resumableStreams.removeStream(newStream));
             } catch (error) {
                 log.error((error as Error)?.message)
                 _streamSources.remove(fastestStreamSource);
@@ -207,6 +197,7 @@ class ResumableMediaStream {
                         await _instance.ensureBufferCoverage({ position });
                         await _instance._bufferArray.waitForNewData(30000);
                     }
+                    _instance._lastUsed = new Date();
                 }
             } catch (error) {
                 log.error(`Error occurred in the streamer`);
@@ -235,71 +226,6 @@ interface StreamerRequest {
     imdbId: string, size: number, start: number, end: number, rawHttpMessage: http.IncomingMessage
 }
 
-export const streamer = async (req: StreamerRequest) => {
-    const existingStream = await ResumableMediaStream.create(req);
-    return await existingStream.requestRange(req.start, req.end, req.rawHttpMessage);
-}
-
-export const clearBuffers = () => {
-    const stime = performance.now();
-    const maxSizeBuffer = config.maxBufferSizeMB * 1000 * 1000;    //200MB buffer
-    const bufferRanges = globalStreams.flatMap(x => {
-        return x._bufferArray.bufferRangeIds.map(ii => {
-            return {
-                bufferId: ii.bufferId,
-                bytesLength: ii.bytesLength,
-                lastUsed: ii.lastUsed,
-                bufferCollection: x._bufferArray
-            }
-        });
-    });
-
-    const bufferRangesSorted = sort(bufferRanges).desc(x => x.lastUsed);
-    let runningSize = 0;
-    let cleanupItems = 0, cleanupSize = 0;
-    const buffersToClean: { bufferIds: string[], bufferCollection: VirtualBufferCollection }[] = [];
-    bufferRangesSorted.forEach(x => {
-        runningSize = runningSize + x.bytesLength;
-        if (runningSize > maxSizeBuffer) {
-            //buffer size reached so clean up the remaining...
-            let existingItem = buffersToClean.find(c => c.bufferCollection === x.bufferCollection);
-            if (!existingItem) {
-                existingItem = {
-                    bufferCollection: x.bufferCollection,
-                    bufferIds: []
-                }
-                buffersToClean.push(existingItem);
-            }
-            existingItem.bufferIds.push(x.bufferId);
-            cleanupItems++;
-            cleanupSize += x.bytesLength;
-        }
-    });
-
-    if (cleanupItems > 0) {
-        buffersToClean.forEach(x => x.bufferCollection.clearBuffers(x.bufferIds));
-        const ftime = performance.now();
-        log.info(`Cleanup ${cleanupItems} items to ${prettyBytes(cleanupSize)} in ${ftime - stime} ms`);
-    }
-}
-
-export const currentStats = () => {
-    const _stmaps = globalStreams.map(x => {
-        return {
-            imdbId: x._imdbId,
-            size: x._size,
-            sizeHuman: prettyBytes(x._size),
-            bufferRange: x._bufferArray.bufferRange,
-            numberOfStreams: x.MyGotStreamCount,
-            bufferArrayLength: x._bufferArray.bufferArrayCount,
-            bufferArraySize: prettyBytes(x._bufferArray.bufferSize),
-            streamStats: x.stats,
-            streamSources: x._streamSources.items,
-            activeRequests: x._activeRequests.items
-        };
-    });
-    return _stmaps;
-}
 
 type ActiveRequest = { requestId: string, start: number, end: number, bytesConsumed: number, created: Date, lastUsed?: Date };
 class ActiveRequestCollection {
@@ -317,3 +243,117 @@ class ActiveRequestCollection {
         return this._streams.map(k => ({ ...k }));
     }
 }
+
+class MediaStreamRegistry {
+    private _streams: ResumableMediaStream[] = [];
+
+    constructor() {
+        log.info(`MediaStreamRegistry initialized`);
+        setInterval(this.clearBuffers, config.AUTO_CLEAR_BUFFERS_INTERVAL);   //register an auto cleanup
+        log.info(`Auto cleanup buffers set to run every ${config.AUTO_CLEAR_BUFFERS_INTERVAL / 1000} seconds`);
+        setInterval(this.cleanupIdleStreams, config.AUTO_CLEAR_IDLE_STREAMS_INTERVAL);
+        log.info(`Auto cleanup idle streams set to run every ${config.AUTO_CLEAR_IDLE_STREAMS_INTERVAL / 1000} seconds`);
+    }
+
+    public find(imdbId: string, size: number) {
+        return this._streams.find(s => s._imdbId === imdbId && s._size === size);
+    }
+
+    private addStream(stream: ResumableMediaStream) {
+        this._streams.push(stream);
+    }
+
+    public serve = async (req: StreamerRequest) => {
+        let mediaStream = this.find(req.imdbId, req.size);
+        if (mediaStream) {
+            log.info(`Reusing existing stream for '${req.imdbId}' with size ${prettyBytes(req.size)}.`);
+            await mediaStream.requestRefresh();  //silent refresh of the streams
+        } else {
+            mediaStream = new ResumableMediaStream(req.imdbId, req.size);
+            this.addStream(mediaStream);
+        }
+        return await mediaStream.requestRange(req.start, req.end, req.rawHttpMessage);
+    }
+
+    /**
+     * stats
+     */
+    public get stats() {
+        return this._streams.map(x => {
+            return {
+                imdbId: x._imdbId,
+                size: x._size,
+                sizeHuman: prettyBytes(x._size),
+                bufferRange: x._bufferArray.bufferRange,
+                numberOfStreams: x.StreamsCount,
+                bufferArrayLength: x._bufferArray.bufferArrayCount,
+                bufferArraySize: prettyBytes(x._bufferArray.bufferSize),
+                streamStats: x.stats,
+                streamSources: x._streamSources.items,
+                activeRequests: x._activeRequests.items,
+                created: x.Created,
+                lastUsed: x.LastUsed
+            };
+        });
+    }
+
+    private cleanupIdleStreams = () => {
+        const now = dayjs();
+        const idleStreams = this._streams.filter(stream => {
+            const lastUsed = dayjs(stream.LastUsed);
+            return now.diff(lastUsed, 'millisecond') > config.maxIdleStreamTimeout;
+        });
+
+        if (idleStreams.length > 0) {
+            log.info(`Cleaning up ${idleStreams.length} idle streams which are not used since last ${config.maxIdleStreamTimeout / 1000} seconds`);
+        } else {
+            log.info(`No idle streams to clean up.`);
+        }
+    };
+
+    clearBuffers = () => {
+        const stime = performance.now();
+        const maxSizeBuffer = config.maxBufferSizeMB * 1000 * 1000;    //200MB buffer
+        const bufferRanges = this._streams.flatMap(x => {
+            return x._bufferArray.bufferRangeIds.map(({ bufferId, bytesLength, lastUsed }) => {
+                return {
+                    bufferId,
+                    bytesLength,
+                    lastUsed,
+                    bufferCollection: x._bufferArray
+                }
+            });
+        });
+
+        const bufferRangesSorted = sort(bufferRanges).desc(x => x.lastUsed);
+        let runningSize = 0;
+        let cleanupItems = 0, cleanupSize = 0;
+        const buffersToClean: { bufferIds: string[], bufferCollection: VirtualBufferCollection }[] = [];
+        bufferRangesSorted.forEach(x => {
+            runningSize = runningSize + x.bytesLength;
+            if (runningSize > maxSizeBuffer) {
+                //buffer size reached so clean up the remaining...
+                let existingItem = buffersToClean.find(c => c.bufferCollection === x.bufferCollection);
+                if (!existingItem) {
+                    existingItem = {
+                        bufferCollection: x.bufferCollection,
+                        bufferIds: []
+                    }
+                    buffersToClean.push(existingItem);
+                }
+                existingItem.bufferIds.push(x.bufferId);
+                cleanupItems++;
+                cleanupSize += x.bytesLength;
+            }
+        });
+
+        if (cleanupItems > 0) {
+            buffersToClean.forEach(x => x.bufferCollection.clearBuffers(x.bufferIds));
+            const ftime = performance.now();
+            log.info(`Cleanup ${cleanupItems} items to ${prettyBytes(cleanupSize)} in ${ftime - stime} ms`);
+        }
+    }
+}
+
+
+export const globalStreamRegistry = new MediaStreamRegistry();

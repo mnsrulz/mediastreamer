@@ -52,7 +52,7 @@ export class ResumableStream {
     public startPosition = 0;
     private _currentPosition = 0;
     private _lastReaderPosition = 0;
-    public lastUsed = new Date();
+    private _lastUsed = new Date();
     private _drainRequested = false;
     private _gotStream: Request;
     private _readAheadExceeded = false;
@@ -87,7 +87,7 @@ export class ResumableStream {
         //move this to global monitoring.. these sort of actions can be decoupled
         const _i = this;
         this._intervalPointer = setInterval(() => {
-            if (dayjs(_i.lastUsed).isBefore(dayjs(new Date()).subtract(10, 'minute'))) {
+            if (dayjs(_i._lastUsed).isBefore(dayjs(new Date()).subtract(10, 'minute'))) {
                 log.warn(`Forcing the stream to auto destroy after idling for more than 10 minute`);
                 _i.drainIt();
             }
@@ -137,7 +137,7 @@ export class ResumableStream {
 
                 this._speedTester.addData(_buf.byteLength);
 
-                this.lastUsed = new Date();
+                this._lastUsed = new Date();
 
                 if (this._bf.existingBufferWhichCanSatisfyPosition(this._currentPosition)) {
                     log.info(`There's already a buffer which can satisfy upcomping buffer position '${this._currentPosition}' so breaking this stream.`);
@@ -176,7 +176,7 @@ export class ResumableStream {
     public CanResolve = (position: number) => position >= this.startPosition && position <= this._currentPosition;
 
     public resume = () => {
-        this.lastUsed = new Date();
+        this._lastUsed = new Date();
         this._lastReaderPosition = this._currentPosition;
         //this.bus.emit('unlocked');
         this._mre.set();
@@ -247,13 +247,13 @@ export class ResumableStream {
 
 
     public get stats() {
-        const { lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester, 
+        const { _lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester, 
             _slowStreamHandled, _lastReadAheadExceededTime, _streamHost } = this;
         return {
             startPosition,
             startPositionHuman: prettyBytes(startPosition),
-            lastUsed,
-            lastUsedAgo: dayjs(lastUsed).fromNow(),
+            lastUsed: _lastUsed,
+            lastUsedAgo: dayjs(_lastUsed).fromNow(),
             currentPosition,
             currentPositionHuman: prettyBytes(currentPosition),
             lastReaderPosition: _lastReaderPosition,
@@ -276,7 +276,6 @@ export class ResumableStream {
 }
 
 export class ResumableStreamCollection {
-
     /**try resuming the stream from the position if any of the existing streams can fullfill the range*/
     public tryResumingStreamFromPosition(position: number) {
         const exisitngStreams = this._st.filter(x => x.CanResolve(position));

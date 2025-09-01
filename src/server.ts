@@ -2,7 +2,7 @@ import 'dotenv/config';
 import config from './config.js';
 import fastifyStatic from '@fastify/static';
 import { app } from './app.js';
-import { streamer, currentStats, clearBuffers } from './streamer.js';
+import { globalStreamRegistry } from './MediaStreamRegistry.js';
 import { parseRangeRequest } from './utils/utils.js';
 import path from 'path';
 import prettyBytes from 'pretty-bytes';
@@ -11,8 +11,6 @@ import { getLinks, getPlaylistItems } from './apiClient.js';
 app.addContentTypeParser('*', { parseAs: 'buffer' }, function (request, payload, done) { done(null); });
 
 const __dirname = path.resolve();
-
-setInterval(clearBuffers, config.AUTO_CLEAR_BUFFERS_INTERVAL);   //register an auto cleanup
 
 app.register((route, opts, next) => {
     route.register(fastifyStatic, {
@@ -26,7 +24,7 @@ app.register((route, opts, next) => {
     });
 
     route.get('/cleanup', async (request, reply) => {
-        clearBuffers();
+        globalStreamRegistry.clearBuffers();
         reply.type('application/json').code(200)
         return { success: 'ok' };
     })
@@ -34,7 +32,7 @@ app.register((route, opts, next) => {
 
     route.get('/stats', async (request, reply) => {
         reply.type('application/json').code(200);
-        return currentStats();
+        return globalStreamRegistry.stats;
     })
 
     route.get('/items/movies', async (request, reply) => {
@@ -85,7 +83,7 @@ app.register((route, opts, next) => {
 
         request.log.info(`/stream/${imdbid}/${size} Range ${prettyBytes(range.end - range.start)} from ${prettyBytes(range.start)}`);
         if (range) {
-            const resp = await streamer({
+            const resp = await globalStreamRegistry.serve({
                 imdbId: imdbid.toLowerCase(),
                 size: documentSize,
                 start: range.start,
