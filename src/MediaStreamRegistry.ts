@@ -42,19 +42,19 @@ TODO:
 class ResumableMediaStream {
     private _refreshRequested = false;
     readonly _bufferArray = new VirtualBufferCollection();
-    private readonly _resumableStreams: ResumableStreamCollection = new ResumableStreamCollection();
+    private readonly _resumableStreams = new ResumableStreamCollection();
     _imdbId: string;
     _streamSources: StreamSourceCollection;
     _size: number;
     private _isRefreshingStreams = false;
-    private _refreshTimer: NodeJS.Timer | null = null;
+    private _refreshTimer: NodeJS.Timeout | null = null;
     private _internalPromise: Promise<void>;
     private _created = new Date();
     private _lastUsed = new Date();
 
     /**these represnets the active clients which are currently consuming the streams*/
     readonly _activeRequests: ActiveRequestCollection = new ActiveRequestCollection();
-    async requestRefresh() {
+    requestRefresh = async () => {
         if (this._streamSources.isEmpty()) {
             if (!this._isRefreshingStreams) {
                 this.performRefresh();
@@ -213,7 +213,7 @@ class ResumableMediaStream {
         return Readable.from(_startStreamer());
     }
 
-    private markLastUsedAsNow() {
+    private markLastUsedAsNow = () => {
         this._lastUsed = new Date();
     }
     public get stats() {
@@ -224,6 +224,9 @@ class ResumableMediaStream {
         if (this._streamSources.isEmpty()) throw new Error(`There are no streamable url available to stream`);
     }
 
+    public dispose = () => {
+        this._resumableStreams.dispose();
+    }
 }
 
 interface StreamerRequest {
@@ -310,6 +313,14 @@ class MediaStreamRegistry {
 
         if (idleStreams.length > 0) {
             log.info(`Cleaning up ${idleStreams.length} idle streams which are not used since last ${config.maxIdleStreamTimeout / 1000} seconds`);
+            for (const stream of idleStreams) {
+                const index = this._streams.indexOf(stream); // find element index
+                if (index > -1) {
+                    this._streams.splice(index, 1); // removes 1 element at that index
+                }
+                log.info(`Disposing media stream for '${stream._imdbId}' having size '${prettyBytes(stream._size)}' due to idle timeout`);
+                stream.dispose();
+            }
         } else {
             log.info(`No idle streams to clean up.`);
         }

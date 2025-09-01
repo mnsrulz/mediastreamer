@@ -276,9 +276,10 @@ export class ResumableStream {
 }
 
 export class ResumableStreamCollection {
+    private readonly _streams: ResumableStream[] = [];
     /**try resuming the stream from the position if any of the existing streams can fullfill the range*/
     public tryResumingStreamFromPosition(position: number) {
-        const exisitngStreams = this._st.filter(x => x.CanResolve(position));
+        const exisitngStreams = this._streams.filter(x => x.CanResolve(position));
         if (exisitngStreams.length > 0) {
             //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
             if (exisitngStreams.length > 1) {
@@ -290,32 +291,35 @@ export class ResumableStreamCollection {
         return false;
     }
 
-    private _st: ResumableStream[];
     public get length(): number {
-        return this._st.length;
-    }
-
-    constructor() {
-        this._st = [];
+        return this._streams.length;
     }
 
     public addStream(stream: ResumableStream) {
-        this._st.push(stream);
+        this._streams.push(stream);
     }
 
     public removeStream(stream: ResumableStream) {
         log.info(`Removing the gostream: ${new URL(stream._streamUrlModel.streamUrl).hostname}`)
-        this._st = this._st.filter(s => s !== stream);
+        const index = this._streams.indexOf(stream); // find element index
+        if (index > -1) {
+            this._streams.splice(index, 1); // removes 1 element at that index
+        }
     }
 
     public updateSpeedRanks(docIdSpeedRankMap: Map<string, number>) {
-        this._st.forEach(x => {
+        this._streams.forEach(x => {
             x._streamUrlModel.speedRank = docIdSpeedRankMap.get(x._streamUrlModel.docId) || x._streamUrlModel.speedRank;
         })
     }
 
-    public get Items(): ResumableStream[] {
-        return this._st;
+    public get Items() {
+        return [...this._streams];
     }
 
+    public dispose() {
+        for (const stream of this._streams) {
+            stream.drainIt();
+        }
+    }
 }

@@ -10,8 +10,6 @@ export class StreamSpeedTester {
     private activeStartTime: number | null = null; // when current active period started
     private activeMs = 0; // total active streaming time
 
-    constructor() {}
-
     /** Call this when stream starts or resumes */
     startActivePeriod() {
         if (!this.activeStartTime) {

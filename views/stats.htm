@@ -153,6 +153,10 @@
                             </div>
                             <div class="description">
                                 <div class="ui list">
+                                    <div class="item"><strong>Created:</strong> {{
+                                        dayjs(selectedItem.created).fromNow() }}</div>
+                                    <div class="item"><strong>Last Used:</strong> {{
+                                        dayjs(selectedItem.lastUsed).fromNow() }}</div>
                                     <div class="item"><strong>Number of Streams:</strong> {{
                                         selectedItem.numberOfStreams }}</div>
                                     <div class="item"><strong>Number of Active Requests:</strong> {{
