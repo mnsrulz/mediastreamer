@@ -29,7 +29,7 @@ export const getLinks = async (imdbId: string, size?: number) => {
 }
 
 export const getPlaylistItems = async (playlist: 'plextv' | 'plexmovie') => {
-    return await instance(`api/playlist/${playlist}/items/`).json<{}[]>();
+    return await instance(`api/playlist/${playlist}/items/`).json<{title: string}[]>();
 }
 
 export const requestRefresh = async (docId: string) => {
@@ -38,6 +38,6 @@ export const requestRefresh = async (docId: string) => {
         log.info(`requesting refresh for docId: ${docId}`);
         await instance.post(urlPath);
     } catch (error) {
-        log.error(`Error occurred while calling the refresh api ${urlPath}. Possibly the api is down.`);
+        log.error(`Error occurred while calling the refresh api ${urlPath}. Possibly the api is down. Error: ${error}`);
     }
 }

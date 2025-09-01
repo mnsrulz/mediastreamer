@@ -10,8 +10,6 @@ import config from './config.js';
 import { StreamSource } from './models/StreamUrlModel.js';
 import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
 import { StreamSpeedTester } from './utils/streamSpeedTester.js';
-type ResumableStreamDataEventArgs = { position: number, buffer: Buffer }
-type ResumableStreamEventTypes = { 'data': [args: ResumableStreamDataEventArgs], 'error': [arg1: Error] }
 const BufferSnapshotMaxItems = 10;  //buffer snapshot max items for finding the stream health
 
 export const createResumableStream = async (streamUrlModel: StreamSource, bf: VirtualBufferCollection, size: number, initialPosition: number) => {
@@ -32,7 +30,8 @@ export const createResumableStream = async (streamUrlModel: StreamSource, bf: Vi
 
             if (initialPosition > 0) {  //ensure the stream response respected the start position
                 const rangeValues = parseByteRangeFromResponseRangeHeader(response.headers['content-range'] || '');
-                (rangeValues?.start != initialPosition) && rej(new Error(`Range Mismatch : Initial position ${initialPosition} is not in the range of the response.`));
+                if (rangeValues?.start != initialPosition)
+                    rej(new Error(`Range Mismatch : Initial position ${initialPosition} is not in the range of the response.`));
             }
 
             if (size !== potentialContentLength) {
@@ -60,8 +59,8 @@ export class ResumableStream {
     private _mre: ManualResetEvent;
     private _firstChunkMre: ManualResetEvent;
     private _bf: VirtualBufferCollection;
-    private _intervalPointer: NodeJS.Timer;
-    private _bufferSnapshotIntervalPointer: NodeJS.Timer;
+    private _intervalPointer: NodeJS.Timeout;
+    private _bufferSnapshotIntervalPointer: NodeJS.Timeout;
     private _bufferSnapshot: { ts: Date, readAheadBufferSize: number }[] = []
     private _speedSnapshot: { ts: Date, bytesDownloaded: number }[] = []
     private _slowStreamHandled = false;   //use this in conjuction with speed_bps and buffer health
@@ -85,11 +84,10 @@ export class ResumableStream {
         this._firstChunkMre = ManualResetEvent.createNew();
         //this is to show if the stream break the code behaves appropriately.
         //move this to global monitoring.. these sort of actions can be decoupled
-        const _i = this;
         this._intervalPointer = setInterval(() => {
-            if (dayjs(_i._lastUsed).isBefore(dayjs(new Date()).subtract(10, 'minute'))) {
+            if (dayjs(this._lastUsed).isBefore(dayjs(new Date()).subtract(10, 'minute'))) {
                 log.warn(`Forcing the stream to auto destroy after idling for more than 10 minute`);
-                _i.drainIt();
+                this.drainIt();
             }
         }, 20000);
 
@@ -97,17 +95,17 @@ export class ResumableStream {
     }
 
     private performBufferSnapshot = () => {
-        const _i = this;
+        const { _bufferSnapshot, _speedSnapshot, _currentPosition, _lastReaderPosition, _bytesDownloaded } = this;
         const ts = new Date()
-        _i._bufferSnapshot.push({ ts, readAheadBufferSize: _i._currentPosition - _i._lastReaderPosition });
-        _i._speedSnapshot.push({ ts, bytesDownloaded: _i._bytesDownloaded })
+        _bufferSnapshot.push({ ts, readAheadBufferSize: _currentPosition - _lastReaderPosition });
+        _speedSnapshot.push({ ts, bytesDownloaded: _bytesDownloaded })
 
-        if (_i._bufferSnapshot.length > BufferSnapshotMaxItems) {
-            _i._bufferSnapshot.shift();
+        if (_bufferSnapshot.length > BufferSnapshotMaxItems) {
+            _bufferSnapshot.shift();
         }
 
-        if (_i._speedSnapshot.length > BufferSnapshotMaxItems) {
-            _i._speedSnapshot.shift();
+        if (_speedSnapshot.length > BufferSnapshotMaxItems) {
+            _speedSnapshot.shift();
         }
     }
 
@@ -164,9 +162,11 @@ export class ResumableStream {
                 }
             }
         } catch (error) {
-            this._drainRequested ?
-                log.info(`Stream ended as drain requested. Actual Err: ${(error as Error)?.message}`) :
-                log.error(`Error occurred while iterating the stream. Actual Err: ${(error as Error)?.message}`); //in case of errors the system will just create a new stream automatically.
+            if (this._drainRequested) {
+                log.info(`Stream ended as drain requested. Actual Err: ${(error as Error)?.message}`);
+            } else {
+                log.error(`Error occurred while iterating the stream. Actual Err: ${(error as Error)?.message}`);
+            }
         } finally {
             clearInterval(this._intervalPointer);
             clearInterval(this._bufferSnapshotIntervalPointer);
@@ -247,7 +247,7 @@ export class ResumableStream {
 
 
     public get stats() {
-        const { _lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester, 
+        const { _lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester,
             _slowStreamHandled, _lastReadAheadExceededTime, _streamHost } = this;
         return {
             startPosition,

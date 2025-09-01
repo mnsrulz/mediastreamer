@@ -57,7 +57,7 @@ app.register((route, opts, next) => {
 
     //the size param is expected to start with z and followed by string which is base 32 encoded of the actual file size. This is just to make the file name compact :).
     route.head<GetStreamRequest>('/stream/:imdbid/:size', async (request, reply) => {
-        const { imdbid, size } = request.params;
+        const { size } = request.params;
         const documentSize = parseInt(size.substring(1), 32);
         const range = parseRangeRequest(documentSize, request.headers['range'])
             || { start: 0, end: documentSize - 1 };

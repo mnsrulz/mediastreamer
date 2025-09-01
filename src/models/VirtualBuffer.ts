@@ -1,6 +1,4 @@
-import prettyBytes from 'pretty-bytes';
-import { log } from '../app.js';
-
+//a simple wrapper around buffer to keep track of usage and last used time
 export class VirtualBuffer {
     _additionalBuffer: Buffer[] = [];
     append(d: Buffer) {
@@ -59,12 +57,12 @@ export class VirtualBuffer {
 
         if (this._additionalBuffer.length > 0) {
             //buffer concat is very expensive operation.. so here we are consolidating it at the time of actual read
-            const _additionalBufferCount = this._additionalBuffer.length;
-            const stime = performance.now();
+            // const _additionalBufferCount = this._additionalBuffer.length;
+            // const stime = performance.now();
             this._buffer = Buffer.concat([this._buffer, ...this._additionalBuffer]);
             this._additionalBuffer = [];
-            const ftime = performance.now();
-            const elapsed = (ftime - stime).toFixed(0);
+            // const ftime = performance.now();
+            // const elapsed = (ftime - stime).toFixed(0);
             //log.info(`consolidated ${_additionalBufferCount + 1} buffer items worth of ${prettyBytes(this._length)} in ${elapsed} ms!`);
         }
         return this._buffer;

@@ -4,6 +4,7 @@ export interface StreamSource { streamUrl: string; headers: Record<string, strin
 
 export class StreamSourceCollection {
     public get items() {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         return this._items.map(({ headers, ...rest }) => ({ ...rest }));
     }
 

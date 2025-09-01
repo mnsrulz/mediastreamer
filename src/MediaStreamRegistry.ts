@@ -41,8 +41,8 @@ TODO:
 
 class ResumableMediaStream {
     private _refreshRequested = false;
-    _bufferArray = new VirtualBufferCollection();
-    private _resumableStreams: ResumableStreamCollection = new ResumableStreamCollection();
+    readonly _bufferArray = new VirtualBufferCollection();
+    private readonly _resumableStreams: ResumableStreamCollection = new ResumableStreamCollection();
     _imdbId: string;
     _streamSources: StreamSourceCollection;
     _size: number;
@@ -53,7 +53,7 @@ class ResumableMediaStream {
     private _lastUsed = new Date();
 
     /**these represnets the active clients which are currently consuming the streams*/
-    _activeRequests: ActiveRequestCollection = new ActiveRequestCollection();
+    readonly _activeRequests: ActiveRequestCollection = new ActiveRequestCollection();
     async requestRefresh() {
         if (this._streamSources.isEmpty()) {
             if (!this._isRefreshingStreams) {
@@ -141,11 +141,11 @@ class ResumableMediaStream {
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
             position = start;
-        const _instance = this;
+        const { _activeRequests, _bufferArray, _resumableStreams, _imdbId, _size, ensureBufferCoverage, throwIfNoStreamUrlPresent, markLastUsedAsNow } = this;
         async function* _startStreamer() {
             let lastKnownStreamInstance = null;
             const incomingRequest = { start: start, end: end, requestId: crypto.randomUUID(), bytesConsumed: 0, created: new Date() } as ActiveRequest;
-            _instance._activeRequests.add(incomingRequest);
+            _activeRequests.add(incomingRequest);
             try {
                 while (!rawHttpRequest.destroyed) {
                     if (bytesConsumed >= bytesRequested) {
@@ -153,7 +153,7 @@ class ResumableMediaStream {
                         break;
                     }
 
-                    const __data = _instance._bufferArray.tryFetch(position, bytesRequested, bytesConsumed);
+                    const __data = _bufferArray.tryFetch(position, bytesRequested, bytesConsumed);
                     if (__data) {
                         /*
                         try to detect speed here and add more instances of stream downloader with advance positions
@@ -171,7 +171,7 @@ class ResumableMediaStream {
                         if (lastKnownStreamInstance && lastKnownStreamInstance.CanResolve(position)) {
                             lastKnownStreamInstance.markLastReaderPosition(position);
                         } else {
-                            lastKnownStreamInstance = _instance._resumableStreams.Items.find(x => x.CanResolve(position));
+                            lastKnownStreamInstance = _resumableStreams.Items.find(x => x.CanResolve(position));
                             lastKnownStreamInstance?.markLastReaderPosition(position);
                         }
 
@@ -179,11 +179,11 @@ class ResumableMediaStream {
                             if (!lastKnownStreamInstance.slowStreamHandled && lastKnownStreamInstance.isSlowStream) {
                                 lastKnownStreamInstance?.markSlowStreamHandled(lastKnownStreamInstance.currentPosition + 8000000);
 
-                                if (lastKnownStreamInstance.currentPosition + 8000000 > _instance._size) {
+                                if (lastKnownStreamInstance.currentPosition + 8000000 > _size) {
                                     log.warn(`Slow stream detected, but the current stream cannot be bisected as the remaining length is not enough long to hold another 8MB.`);
                                 } else {
                                     log.warn(`Slow stream detected, adding another stream to compensate slow stream.`);
-                                    _instance.ensureBufferCoverage({
+                                    ensureBufferCoverage({
                                         position: lastKnownStreamInstance.currentPosition + 8000000,
                                         compensatingSlowStream: true, slowStreamStreamModel: lastKnownStreamInstance._streamUrlModel
                                     });
@@ -193,25 +193,29 @@ class ResumableMediaStream {
 
                         yield __data.data;
                     } else {
-                        _instance.throwIfNoStreamUrlPresent();
-                        await _instance.ensureBufferCoverage({ position });
-                        await _instance._bufferArray.waitForNewData(30000);
+                        throwIfNoStreamUrlPresent();
+                        await ensureBufferCoverage({ position });
+                        await _bufferArray.waitForNewData(30000);
                     }
-                    _instance._lastUsed = new Date();
+                    markLastUsedAsNow();
                 }
             } catch (error) {
-                log.error(`Error occurred in the streamer`);
+                log.error(`Error occurred in the streamer. Error: ${error}`);
             } finally {
-                rawHttpRequest.destroyed ?
-                    log.warn(`Ooops! Seems like the underlying http request has been destroyed. Aborting now!!! Transmitted: ${prettyBytes(bytesConsumed)}`) :
-                    log.info(`Stream transmitted ${prettyBytes(bytesConsumed)} for '${_instance._imdbId}' having size '${prettyBytes(_instance._size)}'`);
-                _instance._activeRequests.remove(incomingRequest);
+                if (rawHttpRequest.destroyed)
+                    log.warn(`Ooops! Seems like the underlying http request has been destroyed. Aborting now!!! Transmitted: ${prettyBytes(bytesConsumed)}`)
+                else
+                    log.info(`Stream transmitted ${prettyBytes(bytesConsumed)} for '${_imdbId}' having size '${prettyBytes(_size)}'`);
+                _activeRequests.remove(incomingRequest);
             }
         }
 
         return Readable.from(_startStreamer());
     }
 
+    private markLastUsedAsNow() {
+        this._lastUsed = new Date();
+    }
     public get stats() {
         return this._resumableStreams.Items.map(x => x.stats);
     }

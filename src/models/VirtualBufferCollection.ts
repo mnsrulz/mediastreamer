@@ -67,7 +67,7 @@ export class VirtualBufferCollection {
     }
 
     public get bufferRange() {
-        let range = [];
+        const range = [];
         for (const b of this._bufferArray) {
             range.push({
                 start: b.range.start,
@@ -85,7 +85,7 @@ export class VirtualBufferCollection {
     }
 
     public get bufferRangeIds() {
-        let range = [];
+        const range = [];
         for (const b of this._bufferArray) {
             range.push({
                 bufferId: b.bufferId,

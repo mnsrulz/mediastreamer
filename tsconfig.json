@@ -1,14 +1,16 @@
 {
   "compilerOptions": {
       "incremental": true,
-      "target":"ES2017",
-      "module": "Node16",
+      "target":"es2022",
+      "module": "nodenext",
       "outDir": "dist",
-      "moduleResolution": "Node16",
+      "moduleResolution": "nodenext",
       "strict": true,
       "declaration": true,
       "sourceMap": true,
-      "esModuleInterop": true
+      "esModuleInterop": true,
+      "lib": ["es2022"],
+      "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "eslint.config.js"]
 }
