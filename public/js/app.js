@@ -145,7 +145,7 @@ export const vm = {
 
         },
         drainStream(streamId) {
-            ky.post(`/streams/${streamId}/drain`).then(() => {
+            ky.post(`streams/${streamId}/drain`).then(() => {
                 toastr.success('Stream drained successfully!');
             }).catch(() => {
                 toastr.error('Error draining stream!');

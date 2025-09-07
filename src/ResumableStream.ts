@@ -174,7 +174,7 @@ export class ResumableStream {
         }
     };
 
-    public CanResolve = (position: number) => position === this._currentPosition + 1;
+    public CanResolve = (position: number) => position >= this.startPosition && position <= this._currentPosition;
 
     public resume = () => {
         this._lastUsed = new Date();
@@ -285,7 +285,7 @@ export class ResumableStreamCollection {
     private readonly _streams: ResumableStream[] = [];
     /**try resuming the stream from the position if any of the existing streams can fullfill the range*/
     public tryResumingStreamFromPosition(position: number) {
-        const exisitngStreams = this._streams.filter(x => x.CanResolve(position));
+        const exisitngStreams = this._streams.filter(x => x.currentPosition === position);
         if (exisitngStreams.length > 0) {
             //log.info(`existing stream found which can satisfy it. args: ${JSON.stringify(args)}`);
             if (exisitngStreams.length > 1) {
