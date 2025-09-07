@@ -1,9 +1,10 @@
 import * as Plot from "https://esm.sh/@observablehq/plot@0.6.13?bundle";
-import ky from "https://esm.sh/ky";
+import ky from "https://esm.sh/ky@1";
 
-import dayjs from "https://esm.sh/dayjs";
-import relativeTime from "https://esm.sh/dayjs/plugin/relativeTime.js";
-import prettyBytes from 'https://esm.sh/pretty-bytes';
+import dayjs from "https://esm.sh/dayjs@1";
+import relativeTime from "https://esm.sh/dayjs@1/plugin/relativeTime.js";
+import prettyBytes from 'https://esm.sh/pretty-bytes@7';
+import { group, sort } from 'https://esm.sh/radash@12'
 
 dayjs.extend(relativeTime);
 
@@ -100,7 +101,7 @@ export const vm = {
             tvshows: [],
             mediaItems: [],
             selectedMediaItem: null,
-            selectedMediaItemLinks: [],
+            searchItemResult: [],
             showVideoPlayer: false,
             currentVideoSrc: null,
         }
@@ -143,6 +144,13 @@ export const vm = {
         requestRange() {
 
         },
+        drainStream(streamId) {
+            ky.post(`/streams/${streamId}/drain`).then(() => {
+                toastr.success('Stream drained successfully!');
+            }).catch(() => {
+                toastr.error('Error draining stream!');
+            });
+        },
         openRangeDialog() {
             this.showRangeDialog = true;
         },
@@ -168,7 +176,29 @@ export const vm = {
             return `z${Number(size).toString(32)}`;
         },
         async loadLinks() {
-            this.selectedMediaItemLinks = await ky(`links/${this.selectedMediaItem.id}`).json();
+            const mediaList = await ky(`links/${this.selectedMediaItem.id}`).json();
+            const grouped = group(mediaList, i => i.size);
+            const sortedResult = sort(
+                Object.entries(grouped).map(([size, group]) => ({
+                    size: Number(size),
+                    items: group
+                })),
+                x => x.size,
+                true // descending
+            );
+
+            this.searchItemResult = sortedResult.map(k => {
+
+                return {
+                    count: k.items.length,
+                    title: k.items[0].title,
+                    imdbId: k.items[0].imdbId,
+                    items: k.items,
+                    size: k.size,
+                    domains: [...new Set(k.items.map(d => new URL(d.playableLink).host))]
+                }
+            })
+            // debugger;
         },
         showAddItemModal() {
             $('.search-media-item').modal({ blurring: true }).modal('show');

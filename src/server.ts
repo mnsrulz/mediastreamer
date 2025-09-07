@@ -29,6 +29,12 @@ app.register((route, opts, next) => {
         return { success: 'ok' };
     })
 
+    route.post<DrainStreamRequest>('/streams/:streamid/drain', (request, reply) => {
+        const { streamid } = request.params;
+        globalStreamRegistry.drainStream(streamid);
+        reply.code(200);
+        return { status: 'ok' };
+    });
 
     route.get('/stats', async (request, reply) => {
         reply.type('application/json').code(200);
@@ -124,5 +130,12 @@ interface GetStreamRequest {
 interface GetLinksRequest {
     Params: {
         imdbid: string
+    }
+}
+
+
+interface DrainStreamRequest {
+    Params: {
+        streamid: string
     }
 }

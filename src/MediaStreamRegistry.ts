@@ -135,6 +135,15 @@ class ResumableMediaStream {
         }
     }
 
+    public drainStream(streamId: string) {
+        const stream = this._resumableStreams.Items.find(x => x.streamId === streamId);
+        if (stream) {
+            stream.drainIt();
+            return true;
+        } 
+        return false;
+    }
+
     public requestRange = async (start: number, end: number, rawHttpRequest: http.IncomingMessage) => {
         await this._internalPromise;    //this should first time wait only.
         log.info(`Requesting ${prettyBytes(end - start)} from ${start === 0 ? 'beginning' : prettyBytes(start)} for '${this._imdbId}' having size '${prettyBytes(this._size)}'`);
@@ -175,7 +184,7 @@ class ResumableMediaStream {
                             lastKnownStreamInstance?.markLastReaderPosition(position);
                         }
 
-                        if (lastKnownStreamInstance) {
+                        if (lastKnownStreamInstance) {  //need to revisit the slow stream detection logic
                             if (!lastKnownStreamInstance.slowStreamHandled && lastKnownStreamInstance.isSlowStream) {
                                 lastKnownStreamInstance?.markSlowStreamHandled(lastKnownStreamInstance.currentPosition + 8000000);
 
@@ -252,6 +261,13 @@ class ActiveRequestCollection {
 }
 
 class MediaStreamRegistry {
+    drainStream(streamid: string) {
+        for(const s of this._streams) {
+            if (s.drainStream(streamid)) return;
+        }
+        log.warn(`No stream found with streamId '${streamid}' to drain`);        
+    }
+
     private _streams: ResumableMediaStream[] = [];
 
     constructor() {

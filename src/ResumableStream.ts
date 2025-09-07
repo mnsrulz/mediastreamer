@@ -48,6 +48,7 @@ export const createResumableStream = async (streamUrlModel: StreamSource, bf: Vi
 Stream responsible for building a new stream and emitting the data in an effective manner
 */
 export class ResumableStream {
+    private _streamId = crypto.randomUUID();
     public startPosition = 0;
     private _currentPosition = 0;
     private _lastReaderPosition = 0;
@@ -173,7 +174,7 @@ export class ResumableStream {
         }
     };
 
-    public CanResolve = (position: number) => position >= this.startPosition && position <= this._currentPosition;
+    public CanResolve = (position: number) => position === this._currentPosition + 1;
 
     public resume = () => {
         this._lastUsed = new Date();
@@ -203,6 +204,10 @@ export class ResumableStream {
 
     public get slowStreamHandled() {
         return this._slowStreamHandled
+    }
+
+    public get streamId() {
+        return this._streamId;
     }
 
     public markSlowStreamHandled = (forceEndPosition: number) => {
@@ -247,9 +252,10 @@ export class ResumableStream {
 
 
     public get stats() {
-        const { _lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester,
+        const { streamId, _lastUsed, startPosition, _lastReaderPosition, _drainRequested, _currentPosition: currentPosition, _readAheadExceeded, _bufferSnapshot, isGoodStream, hasHealthyBuffer, _speedTester,
             _slowStreamHandled, _lastReadAheadExceededTime, _streamHost } = this;
         return {
+            streamId,
             startPosition,
             startPositionHuman: prettyBytes(startPosition),
             lastUsed: _lastUsed,

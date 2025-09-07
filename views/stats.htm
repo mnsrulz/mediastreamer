@@ -190,6 +190,9 @@
                                         <div><strong>Last Used:</strong> <span :title="stream.lastUsed">{{
                                                 stream.lastUsedAgo }} ({{ new
                                                 Date(stream.lastUsed).toLocaleString() }})</span></div>
+                                        <div>
+                                            <button class="ui mini red button" @click="drainStream(stream.streamId)">Drain it</button>
+                                        </div>
                                     </div>
                                     <div class="sixteen wide mobile eight wide computer column">
                                         <div>
@@ -274,14 +277,14 @@
                             <div class="results"></div>
                         </div>
                         <div v-if="selectedMediaItem" class="ui relaxed divided list scrolling content">
-                            <template v-if="selectedMediaItemLinks && selectedMediaItemLinks.length > 0">
-                                <template v-for="item in selectedMediaItemLinks">
+                            <template v-if="searchItemResult && searchItemResult.length > 0">
+                                <template v-for="item in searchItemResult">
                                     <div class="item">
                                         <i class="large play middle aligned link icon"
                                             @click="playVideo(item.imdbId, item.size)"></i>
                                         <div class="content">
                                             <span class="header">{{ item.title }}</span>
-                                            <div class="description">{{ item.lastUpdated }}</div>
+                                            <div class="description">{{ item.domains.join(', ') }} ({{ item.count }})</div>
                                         </div>
                                     </div>
                                 </template>
