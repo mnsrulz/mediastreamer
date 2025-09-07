@@ -191,7 +191,8 @@
                                                 stream.lastUsedAgo }} ({{ new
                                                 Date(stream.lastUsed).toLocaleString() }})</span></div>
                                         <div>
-                                            <button class="ui mini red button" @click="drainStream(stream.streamId)">Drain it</button>
+                                            <button class="ui mini red button"
+                                                @click="drainStream(stream.streamId)">Drain it</button>
                                         </div>
                                     </div>
                                     <div class="sixteen wide mobile eight wide computer column">
@@ -278,13 +279,19 @@
                         </div>
                         <div v-if="selectedMediaItem" class="ui relaxed divided list scrolling content">
                             <template v-if="searchItemResult && searchItemResult.length > 0">
-                                <template v-for="item in searchItemResult">
-                                    <div class="item">
-                                        <i class="large play middle aligned link icon"
-                                            @click="playVideo(item.imdbId, item.size)"></i>
+                                <template v-for="item in searchItemResult" :key="item.imdbId">
+                                    <div class="item" style="display: flex; align-items: center;">
+                                        <button class="ui circular green icon button"
+                                            @click="playVideo(item.imdbId, item.size)">
+                                            <i class="play icon"></i>
+                                        </button>
                                         <div class="content">
-                                            <span class="header">{{ item.title }}</span>
-                                            <div class="description">{{ item.domains.join(', ') }} ({{ item.count }})</div>
+                                            <div class="header">{{ item.title }}</div>
+                                            <div class="description">
+                                                <span class="ui text grey">{{ item.domains.join(', ') }}</span>
+                                                <span class="ui label">{{ item.count }} files</span>
+                                                <span class="ui label">{{ prettyBytes(item.size) }}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </template>
