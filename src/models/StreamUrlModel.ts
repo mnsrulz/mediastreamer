@@ -27,6 +27,10 @@ export class StreamSourceCollection {
         return sort(this._items.filter(x => x !== stream)).desc(x => x.speedRank)[0];
     }
 
+    sorted() {
+        return sort(this._items).desc(x => x.speedRank);
+    }
+
     isEmpty() {
         return this._items.length === 0;
     }

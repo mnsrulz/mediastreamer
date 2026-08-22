@@ -112,25 +112,26 @@ class ResumableMediaStream {
     private ensureBufferCoverage = async (args: ResumableMediaStreamRequestStreamEventArgs) => {
         if (!this._resumableStreams.tryResumingStreamFromPosition(args.position)) {
             const { _resumableStreams, _size, _bufferArray, _streamSources } = this;
-            let fastestStreamSource = _streamSources.fastest();
-            if (args.compensatingSlowStream) {
-                fastestStreamSource = _streamSources.fastestButNot(args.slowStreamStreamModel) || fastestStreamSource;
+            const sources = _streamSources.sorted();
+
+            for (const source of sources) {
+                if (args.compensatingSlowStream && source === args.slowStreamStreamModel) continue;
+
+                try {
+                    const newStream = await createResumableStream(source, _bufferArray, _size, args.position);
+                    _resumableStreams.addStream(newStream);
+                    newStream.startStreaming()
+                        .finally(() => _resumableStreams.removeStream(newStream));
+                    return;
+                } catch (error) {
+                    log.error((error as Error)?.message)
+                    _streamSources.remove(source);
+                    requestRefresh(source.docId);
+                }
             }
 
-            if (!fastestStreamSource) {
-                log.error(`No stream source available to create a new stream for '${this._imdbId}'`);
-                return;
-            }
-
-            try {
-                const newStream = await createResumableStream(fastestStreamSource, _bufferArray, _size, args.position);
-                _resumableStreams.addStream(newStream);
-                newStream.startStreaming()
-                    .finally(() => _resumableStreams.removeStream(newStream));
-            } catch (error) {
-                log.error((error as Error)?.message)
-                _streamSources.remove(fastestStreamSource);
-                requestRefresh(fastestStreamSource.docId);
+            if (_streamSources.isEmpty()) {
+                throw new Error(`All stream sources exhausted for '${this._imdbId}'`);
             }
         }
     }
