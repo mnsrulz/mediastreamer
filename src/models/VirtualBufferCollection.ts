@@ -2,7 +2,7 @@ import prettyBytes from 'pretty-bytes';
 import config from '../config.js';
 import { VirtualBuffer } from './VirtualBuffer.js';
 import { pEvent } from 'p-event';
-import { EventEmitter } from 'streamspeed';
+import { EventEmitter } from 'node:events';
 
 export class VirtualBufferCollection {
 

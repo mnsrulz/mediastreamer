@@ -152,7 +152,7 @@ class ResumableMediaStream {
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
             position = start;
-        const { _activeRequests, _bufferArray, _resumableStreams, _imdbId, _size, ensureBufferCoverage, throwIfNoStreamUrlPresent, markLastUsedAsNow } = this;
+        const { _activeRequests, _bufferArray, _resumableStreams, _imdbId, _size, ensureBufferCoverage, markLastUsedAsNow } = this;
         async function* _startStreamer() {
             let lastKnownStreamInstance = null;
             const incomingRequest = { start: start, end: end, requestId: crypto.randomUUID(), bytesConsumed: 0, created: new Date() } as ActiveRequest;
