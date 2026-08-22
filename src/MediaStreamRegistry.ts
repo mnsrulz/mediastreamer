@@ -111,7 +111,7 @@ class ResumableMediaStream {
 
     private ensureBufferCoverage = async (args: ResumableMediaStreamRequestStreamEventArgs) => {
         if (!this._resumableStreams.tryResumingStreamFromPosition(args.position)) {
-            const { _resumableStreams, _size, _bufferArray, _streamSources } = this;
+            const { _resumableStreams, _size, _bufferArray, _streamSources, throwIfNoStreamUrlPresent } = this;
             const sources = _streamSources.sorted();
 
             for (const source of sources) {
@@ -129,9 +129,10 @@ class ResumableMediaStream {
                     requestRefresh(source.docId);
                 }
             }
-
-            if (_streamSources.isEmpty()) {
-                throw new Error(`All stream sources exhausted for '${this._imdbId}'`);
+            
+            //only in case of compensating slow stream we should not throw error as we are trying to add another stream to compensate the slow stream
+            if (!args.compensatingSlowStream) { 
+                throwIfNoStreamUrlPresent();
             }
         }
     }
@@ -203,7 +204,6 @@ class ResumableMediaStream {
 
                         yield __data.data;
                     } else {
-                        throwIfNoStreamUrlPresent();
                         await ensureBufferCoverage({ position });
                         await _bufferArray.waitForNewData(30000);
                     }
