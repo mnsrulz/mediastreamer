@@ -19,7 +19,7 @@ app.register((route, opts, next) => {
     });
 
     route.get('/', async (request, reply) => {
-        if (!request.routerPath.endsWith('/')) return reply.redirect(`${request.routerPath}/`);
+        if (request.routeOptions.url && !request.routeOptions.url.endsWith('/')) return reply.redirect(`${request.routeOptions.url}/`);
         return reply.sendFile('stats.htm', path.join(__dirname, '/views/'));
     });
 
