@@ -10,7 +10,7 @@ FROM node:22-alpine
 WORKDIR /app
 COPY package*.json ./
 # Install production dependencies
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY ./views ./views
 COPY ./public ./public
