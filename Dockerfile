@@ -8,12 +8,13 @@ RUN npm run build
 
 FROM node:22-alpine
 WORKDIR /app
+COPY package*.json ./
+# Install production dependencies
+RUN npm ci --omit=dev
 
 COPY ./views ./views
 COPY ./public ./public
 COPY ./frontrailpresets ./frontrailpresets
-COPY package*.json ./
-
 
 ARG BUILD_TIME
 ARG GIT_SHA
