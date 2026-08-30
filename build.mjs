@@ -8,6 +8,18 @@ await esbuild.build({
   format: 'esm',
   target: 'esnext',
   platform: 'node',
-  plugins: [esbuildPluginPino({ transports: ['pino-pretty', '@logtail/pino'] })],
-  banner: { js: 'import { createRequire } from "module";const require = createRequire(import.meta.url);' }
+  packages: 'external',
+  plugins: [
+    esbuildPluginPino({
+      transports: ['pino-pretty', '@logtail/pino']
+    })
+  ],
+  // banner: { 
+  //   js: `
+  //     import { fileURLToPath } from 'node:url';
+  //     import { dirname } from 'node:path';
+  //     const __filename = fileURLToPath(import.meta.url);
+  //     const __dirname = dirname(__filename);
+  //   ` 
+  // }
 })
