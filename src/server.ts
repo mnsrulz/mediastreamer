@@ -13,13 +13,11 @@ const rootDir = `${import.meta.dirname}/..`;
 
 app.register((route, opts, next) => {
     route.register(fastifyStatic, {
-        root: `${rootDir}/public`,
-        prefix: '/'
+        root: `${rootDir}/public`
     });
 
     route.get('/', async (request, reply) => {
-        if (request.routeOptions.url && !request.routeOptions.url.endsWith('/')) return reply.redirect(`${request.routeOptions.url}/`);
-        return reply.sendFile('stats.htm', `${rootDir}/views/`);
+        return reply.sendFile('stats.htm', `${rootDir}/views`);
     });
 
     route.get('/cleanup', async (request, reply) => {
