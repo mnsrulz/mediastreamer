@@ -1,6 +1,6 @@
 import got from 'got';
-import { log } from './app.js';
-import config from './config.js';
+import { log } from './app.ts';
+import config from './config.ts';
 const instance = got.extend({ prefixUrl: config.linksApiUrl });
 interface linksResponse {
     count: number

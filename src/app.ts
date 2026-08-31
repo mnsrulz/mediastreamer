@@ -1,4 +1,4 @@
-import Fastify from 'fastify'
+import Fastify, { LogController } from 'fastify'
 import 'pino-pretty'
 
 import '@logtail/pino'
@@ -24,6 +24,6 @@ export const app = Fastify({
         },
 
     }, 
-    disableRequestLogging: true
+    logController: new LogController({ disableRequestLogging: true })
 });
 export const log = app.log;

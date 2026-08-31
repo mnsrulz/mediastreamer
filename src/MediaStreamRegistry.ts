@@ -1,14 +1,15 @@
 import { Readable } from 'node:stream';
 import * as http from 'http'
 import prettyBytes from 'pretty-bytes';
-import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
-import { getLinks, requestRefresh } from './apiClient.js';
+import { VirtualBufferCollection } from './models/VirtualBufferCollection.ts';
+import { getLinks, requestRefresh } from './apiClient.ts';
 import { sort } from 'fast-sort';
-import { log } from './app.js';
-import { delay } from './utils/utils.js';
-import config from './config.js';
-import { createResumableStream, ResumableStreamCollection } from './ResumableStream.js';
-import { StreamSource, StreamSourceCollection } from './models/StreamUrlModel.js';
+import { log } from './app.ts';
+import { delay } from './utils/utils.ts';
+import config from './config.ts';
+import { createResumableStream, ResumableStreamCollection } from './ResumableStream.ts';
+import type { StreamSource } from './models/StreamUrlModel.ts';
+import { StreamSourceCollection } from './models/StreamUrlModel.ts';
 import dayjs from 'dayjs';
 
 const acquireStreams = async (imdbId: string, size: number) => {

@@ -1,26 +1,25 @@
 import 'dotenv/config';
-import config from './config.js';
+import config from './config.ts';
 import fastifyStatic from '@fastify/static';
-import { app } from './app.js';
-import { globalStreamRegistry } from './MediaStreamRegistry.js';
-import { parseRangeRequest } from './utils/utils.js';
-import path from 'path';
+import { app } from './app.ts';
+import { globalStreamRegistry } from './MediaStreamRegistry.ts';
+import { parseRangeRequest } from './utils/utils.ts';
 import prettyBytes from 'pretty-bytes';
-import { getLinks, getPlaylistItems } from './apiClient.js';
+import { getLinks, getPlaylistItems } from './apiClient.ts';
 
 app.addContentTypeParser('*', { parseAs: 'buffer' }, function (request, payload, done) { done(null); });
 
-const __dirname = path.resolve();
+const rootDir = `${import.meta.dirname}/..`;
 
 app.register((route, opts, next) => {
     route.register(fastifyStatic, {
-        root: path.join(__dirname, 'public'),
+        root: `${rootDir}/public`,
         prefix: '/'
     });
 
     route.get('/', async (request, reply) => {
         if (request.routeOptions.url && !request.routeOptions.url.endsWith('/')) return reply.redirect(`${request.routeOptions.url}/`);
-        return reply.sendFile('stats.htm', path.join(__dirname, '/views/'));
+        return reply.sendFile('stats.htm', `${rootDir}/views/`);
     });
 
     route.get('/cleanup', async (request, reply) => {
@@ -110,6 +109,17 @@ app.register((route, opts, next) => {
     prefix: config.rootPath
 });
 
+
+const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
+for (const signal of signals) {
+    process.on(signal, async () => {
+        app.log.info(`Received ${signal}, shutting down gracefully...`);
+        const forceExit = setTimeout(() => process.exit(1), 5000);
+        forceExit.unref();
+        await app.close();
+        process.exit(0);
+    });
+}
 
 app.listen({ port: config.DEFAULT_SERVER_PORT, host: '0.0.0.0' }, (err) => {
     app.log.info(`App build time: ${process.env.BUILD_TIME}`);

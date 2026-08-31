@@ -1,15 +1,16 @@
 import prettyBytes from 'pretty-bytes';
-import got, { Request, Response } from 'got';
+import got from 'got';
+import type { Request, Response } from 'got';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime.js';
 dayjs.extend(relativeTime)
-import { ManualResetEvent } from './utils/ManualResetEvent.js';
-import { log } from './app.js';
-import { parseByteRangeFromResponseRangeHeader, parseContentLengthFromRangeHeader } from './utils/utils.js';
-import config from './config.js';
-import { StreamSource } from './models/StreamUrlModel.js';
-import { VirtualBufferCollection } from './models/VirtualBufferCollection.js';
-import { StreamSpeedTester } from './utils/streamSpeedTester.js';
+import { ManualResetEvent } from './utils/ManualResetEvent.ts';
+import { log } from './app.ts';
+import { parseByteRangeFromResponseRangeHeader, parseContentLengthFromRangeHeader } from './utils/utils.ts';
+import config from './config.ts';
+import type { StreamSource } from './models/StreamUrlModel.ts';
+import { VirtualBufferCollection } from './models/VirtualBufferCollection.ts';
+import { StreamSpeedTester } from './utils/streamSpeedTester.ts';
 const BufferSnapshotMaxItems = 10;  //buffer snapshot max items for finding the stream health
 
 export const createResumableStream = async (streamUrlModel: StreamSource, bf: VirtualBufferCollection, size: number, initialPosition: number) => {
