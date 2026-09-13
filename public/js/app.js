@@ -8,11 +8,8 @@ import { group, sort } from 'https://esm.sh/radash@12'
 
 dayjs.extend(relativeTime);
 
-// const apiResponse = await fetch('stats');
-// const apiData = await apiResponse.json();
-const REFRESH_INTERVAL_MS = 1000;
 const fn1 = (selectedImdbId, selectedItemSize, items) => {
-    const { bufferRange, size } = items.find(x => x.imdbId === selectedImdbId && x.size === selectedItemSize);
+    const { bufferRange, size } = items.find(x => x.imdbId === selectedImdbId && x.size === selectedItemSize) ?? {};
     if (!bufferRange || bufferRange.length === 0) return 'No buffer elements to plot chart.';
     const chunkSize = parseInt((size / 300).toFixed(0));   //size comes as 100 MB
     let d = [];
@@ -79,13 +76,26 @@ const fn1 = (selectedImdbId, selectedItemSize, items) => {
 
 export const vm = {
     mounted() {
-        this.fetchStats();
         this.fetchItems();
-        this._interval = setInterval(this.fetchStats, REFRESH_INTERVAL_MS);
         this.videoPlayerInstance = videojs(this.$refs.videoPlayer);
+
+        this.eventSource = new EventSource('stats/stream');
+        this.eventSource.onmessage = (event) => {
+            const apiData = JSON.parse(event.data);
+            this.items = apiData;
+            if (!this.selectedImdbId && apiData.length > 0) {
+                this.selectedImdbId = apiData[0].imdbId;
+                this.selectedItemSize = apiData[0].size;
+            } else if (apiData.length === 0) {
+                this.selectedImdbId = null;
+                this.selectedItemSize = null;
+            }
+        };
     },
     unmounted() {
-        clearInterval(this._interval);
+        if (this.eventSource) {
+            this.eventSource.close();
+        }
     },
     data() {
         return {
@@ -128,18 +138,6 @@ export const vm = {
             const movies = await ky('items/movies').json();
             const tvshows = await ky('items/tv').json();
             this.mediaItems = [...tvshows, ...movies];
-        },
-        async fetchStats() {
-            const apiResponse = await fetch('stats');
-            const apiData = await apiResponse.json();
-            this.items = apiData;
-            if (!this.selectedImdbId && apiData.length > 0) {
-                this.selectedImdbId = apiData[0].imdbId;
-                this.selectedItemSize = apiData[0].size;
-            } else if (apiData.length === 0) {
-                this.selectedImdbId = null;
-                this.selectedItemSize = null;
-            }
         },
         requestRange() {
 

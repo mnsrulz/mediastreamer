@@ -11,6 +11,7 @@
     "test:tsx": "node --watch --import tsx --test test/*test.ts",
     "build": "tsc",
     "start": "node src/server.ts",
+    "start:debug": "NODE_ENV=test node --watch src/server.ts",
     "start:frontail": "node src/server.ts | frontail --ui-highlight --ui-highlight-preset frontrailpresets\\npmlog.json --disable-usage-stats -p 9002 -n 80 -",
     "build:tsc": "tsc",
     "build:tscwatch": "tsc --watch",
@@ -20,6 +21,7 @@
   "license": "ISC",
   "dependencies": {
     "@fastify/one-line-logger": "^1.2.0",
+    "@fastify/sse": "^0.6.0",
     "@fastify/static": "^10.1.3",
     "@logtail/pino": "^0.5.0",
     "dayjs": "^1.11.23",
