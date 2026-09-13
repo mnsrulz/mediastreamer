@@ -212,6 +212,7 @@ class ResumableMediaStream {
                 }
             } catch (error) {
                 log.error(`Error occurred in the streamer. Error: ${error}`);
+                throw error;    //rethrow the error so that the caller can handle it
             } finally {
                 if (rawHttpRequest.destroyed)
                     log.warn(`Ooops! Seems like the underlying http request has been destroyed. Aborting now!!! Transmitted: ${prettyBytes(bytesConsumed)}`)
