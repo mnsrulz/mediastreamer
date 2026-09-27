@@ -152,7 +152,7 @@ class ResumableMediaStream {
         log.info(`Requesting ${prettyBytes(end - start)} from ${start === 0 ? 'beginning' : prettyBytes(start)} for '${this._imdbId}' having size '${prettyBytes(this._size)}'`);
         const bytesRequested = end - start + 1;
         let bytesConsumed = 0,
-            position = start;
+        position = start;
         const { _activeRequests, _bufferArray, _resumableStreams, _imdbId, _size, ensureBufferCoverage, markLastUsedAsNow } = this;
         async function* _startStreamer() {
             let lastKnownStreamInstance = null;
@@ -160,6 +160,7 @@ class ResumableMediaStream {
             _activeRequests.add(incomingRequest);
             try {
                 while (!rawHttpRequest.destroyed) {
+                    markLastUsedAsNow();
                     if (bytesConsumed >= bytesRequested) {
                         log.info(`Guess what! we have reached the conclusion of this stream request.`);
                         break;
@@ -202,13 +203,11 @@ class ResumableMediaStream {
                                 }
                             }
                         }
-
                         yield __data.data;
                     } else {
                         await ensureBufferCoverage({ position });
                         await _bufferArray.waitForNewData(30000);
                     }
-                    markLastUsedAsNow();
                 }
             } catch (error) {
                 log.error(`Error occurred in the streamer. Error: ${error}`);

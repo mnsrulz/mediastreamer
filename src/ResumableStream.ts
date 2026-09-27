@@ -50,7 +50,7 @@ Stream responsible for building a new stream and emitting the data in an effecti
 */
 export class ResumableStream {
     private _streamId = crypto.randomUUID();
-    public startPosition = 0;
+    private startPosition = 0;
     private _currentPosition = 0;
     private _lastReaderPosition = 0;
     private _lastUsed = new Date();
