@@ -51,6 +51,22 @@ sequenceDiagram
     API-->>Client: RETURN buffer content
 ```
 
+# Serving a zip entry (byte window)
+
+A season zip is served as one archive; its episodes are byte windows inside it. The window is carried as a path segment on a nested route:
+
+```
+GET|HEAD {ROOT_PATH}stream/{imdbId}/z{archiveSizeBase32}/entry/f{start}-{end}
+```
+
+- `f{start}-{end}` are inclusive decimal byte offsets **inside the archive** (`f1048576-2148485119`), no extension, no query string.
+- The client's `Range` header is **entry-relative**: it is translated to absolute archive offsets before fetching, and the response reports `Content-Range: bytes relStart-relEnd/(end-start+1)` with the entry length as the total.
+- Only `STORED` (uncompressed) windows are expected — the caller guarantees the offsets; the streamer never inspects zip structure or compression methods.
+- No `Range` header returns the whole entry as `200` (`Content-Length: entryLen`, no `Content-Range`). With `Range` the response is `206`.
+- Invalid `f{start}-{end}` or a `start > end` window answers `400`; a window outside the archive answers `416`.
+- `Content-Type` is `application/octet-stream` (the URL carries no extension), matching the whole-archive route.
+- Entry and whole-archive requests for the same `imdbid` + archive size share one registered stream and one byte cache.
+
 # Tests
 ```
 npm run test:tsx

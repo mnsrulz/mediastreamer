@@ -12,20 +12,29 @@ interface linksResponse {
         title: string,
         playableLink: string,
         speedRank: number,
-        headers: Record<string, string>
+        headers: Record<string, string>,
+        isDerived?: boolean
     }[]
 }
-export const getLinks = async (imdbId: string, size?: number) => {
-    log.info(`requesting getLinks for imdbId: '${imdbId}' with size: '${size}'`);
-    const sp: Record<string, string | number> = {
+
+export const buildLinksQuery = (imdbId: string, size?: number): Record<string, string | number | boolean> => {
+    const sp: Record<string, string | number | boolean> = {
         imdbId: imdbId,
-        per_page: 100
+        per_page: 100,
+        expand: false
     }
     if (size) sp['size'] = size;
+    return sp;
+}
+
+export const filterLinkSources = (items: linksResponse['items']) => items.filter(x => x.status === 'Valid' && !x.isDerived);
+
+export const getLinks = async (imdbId: string, size?: number) => {
+    log.info(`requesting getLinks for imdbId: '${imdbId}' with size: '${size}'`);
     const u = await instance(`api/links`, {
-        searchParams: sp
+        searchParams: buildLinksQuery(imdbId, size)
     }).json<linksResponse>();
-    return u.items.filter(x => x.status === 'Valid');
+    return filterLinkSources(u.items);
 }
 
 export const getPlaylistItems = async (playlist: 'plextv' | 'plexmovie') => {

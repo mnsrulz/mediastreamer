@@ -3,7 +3,7 @@ import config from './config.ts';
 import fastifyStatic from '@fastify/static';
 import { app } from './app.ts';
 import { globalStreamRegistry } from './MediaStreamRegistry.ts';
-import { parseRangeRequest } from './utils/utils.ts';
+import { parseRangeRequest, resolveEntryRange } from './utils/utils.ts';
 import prettyBytes from 'pretty-bytes';
 import { getLinks, getPlaylistItems } from './apiClient.ts';
 
@@ -183,6 +183,67 @@ app.register((route, opts, next) => {
         }
         throw new Error('Only range request supported!');
     })
+
+    route.head<GetEntryRequest>('/stream/:imdbid/:size/entry/:file', async (request, reply) => {
+        const { size, file } = request.params;
+        if (!size.startsWith('z')) {
+            reply.code(400);
+            return { error: 'Only request with size starts with z supported!' };
+        }
+
+        const documentSize = parseInt(size.substring(1), 32);
+        const entry = resolveEntryRange(file, request.headers['range'], documentSize);
+        if (!entry.ok) {
+            reply.code(entry.status);
+            return { error: entry.error };
+        }
+
+        reply.header('Content-Type', 'application/octet-stream');
+        reply.header('Accept-Ranges', 'bytes');
+        if (entry.partial) {
+            reply.header('Content-Range', `bytes ${entry.relStart}-${entry.relEnd}/${entry.entryLen}`);
+            reply.header('Content-Length', entry.relEnd - entry.relStart + 1);
+            reply.code(206);
+        } else {
+            reply.header('Content-Length', entry.entryLen);
+        }
+    });
+
+    route.get<GetEntryRequest>('/stream/:imdbid/:size/entry/:file', async (request, reply) => {
+        const { imdbid, size, file } = request.params;
+        if (!size.startsWith('z')) {
+            reply.code(400);
+            return { error: 'Only request with size starts with z supported!' };
+        }
+
+        const documentSize = parseInt(size.substring(1), 32);
+        const entry = resolveEntryRange(file, request.headers['range'], documentSize);
+        if (!entry.ok) {
+            reply.code(entry.status);
+            return { error: entry.error };
+        }
+
+        request.log.info(`${imdbid} entry ${entry.start}-${entry.end} Range ${prettyBytes(entry.relEnd - entry.relStart)} from ${prettyBytes(entry.relStart)}`);
+
+        const resp = await globalStreamRegistry.serve({
+            imdbId: imdbid.toLowerCase(),
+            size: documentSize,
+            start: entry.absStart,
+            end: entry.absEnd,
+            rawHttpMessage: request.raw
+        });
+
+        reply.header('Content-Type', 'application/octet-stream');
+        reply.header('Accept-Ranges', 'bytes');
+        if (entry.partial) {
+            reply.header('Content-Range', `bytes ${entry.relStart}-${entry.relEnd}/${entry.entryLen}`);
+            reply.header('Content-Length', entry.relEnd - entry.relStart + 1);
+            reply.code(206);
+        } else {
+            reply.header('Content-Length', entry.entryLen);
+        }
+        return reply.send(resp);
+    })
     next();
 }, {
     prefix: config.rootPath
@@ -213,6 +274,12 @@ app.listen({ port: config.DEFAULT_SERVER_PORT, host: '0.0.0.0' }, (err) => {
 interface GetStreamRequest {
     Params: {
         imdbid: string, size: string
+    }
+}
+
+interface GetEntryRequest {
+    Params: {
+        imdbid: string, size: string, file: string
     }
 }
 

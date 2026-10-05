@@ -11,8 +11,11 @@ Range: bytes=19000000-19000090
 # Superman (2025)-z2p81ten.mkv
 
 ###
-GET http://localhost:3000/stream/tt9006564/S1mnc74d
-Range: bytes=9120000-9120010
+HEAD http://localhost:3000/streamer/stream/tt35929525/z5c5qm6h/entry/f270-829707382
+
+###
+GET http://localhost:3000/streamer/stream/tt35929525/z5c5qm6h/entry/f270-829707382
+Range: bytes=0-1023
 
 ###
 GET http://localhost:3000/stats
